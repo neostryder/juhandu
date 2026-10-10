@@ -64,7 +64,7 @@ function world(titles: string[]): World {
       ids.set(found.title, found.id);
       store.saveEmbedding(found.id, TAG, vecFor(found.title));
     }
-    before = Math.min(...page.map((p) => p.id));
+    before = page[page.length - 1]!.id;
   }
   return { store, ids };
 }

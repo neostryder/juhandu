@@ -20,7 +20,7 @@ Every feed has a tier, public or private, which decides where its items may be s
 
 ### Importing from another reader
 
-The Feeds screen imports an OPML file from Inoreader or any reader that exports one, up to 2000 feeds. Folders come along, with nested folders joined by ` / `, and a preview lets you untick feeds and pick the tier for the whole import. Nothing is fetched during the import; the poller picks the new feeds up on its next rounds. Once they have come in, a catch-up step offers to build a briefing from everything unread and then to mark it all read.
+The Feeds screen imports an OPML file from Inoreader or any reader that exports one, up to 2000 feeds. Folders come along, with nested folders joined by ` / `, and a preview lets you untick feeds and pick the tier for the whole import. Nothing is fetched during the import; the poller picks the new feeds up on its next rounds. Once they have come in, a catch-up step offers to build a briefing from everything unread and then to mark it all read. A feed whose address carries a login (a name and password before the host, or a query value under a name such as token, key, secret, auth, or session) comes in as a private link: it goes in the private tier whatever tier you picked, the feed list shows only its host, and the real address is kept in the secret store and never appears in the preview. If no secret store is set up, those feeds are skipped and the result says how many.
 
 ### Rules
 

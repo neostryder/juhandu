@@ -6,7 +6,10 @@ import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { createApp } from "../src/api/server.ts";
 import { Ingestor } from "../src/ingest/ingest.ts";
-import { importOpml, parseOpml, previewOpml } from "../src/import/opml.ts";
+import { carriesLogin, importOpml, parseOpml, previewOpml } from "../src/import/opml.ts";
+import { Redactor, SecretStore } from "../src/secrets/store.ts";
+import type { SecretBackend } from "../src/secrets/store.ts";
+import { Credentials } from "../src/sources/credentials.ts";
 import { Store } from "../src/store/store.ts";
 import type { FetchLike } from "../src/sources/fetcher.ts";
 
@@ -58,17 +61,17 @@ test("parseOpml refuses text with no body and tolerates an outline with no title
   assert.equal(parsed.feeds[0]?.folder, "");
 });
 
-test("previewOpml marks what is already subscribed, and importOpml adds the rest without fetching", () => {
+test("previewOpml marks what is already subscribed, and importOpml adds the rest without fetching", async () => {
   const dir = tempDir();
   const store = new Store(join(dir, "j.sqlite"));
   try {
     store.addSource({ kind: "feed", url: "https://beta.example/rss", title: "Beta", siteUrl: "", folder: "Old", tier: "public" });
-    const preview = previewOpml(store, OPML);
+    const preview = await previewOpml(store, OPML);
     assert.deepEqual(preview.counts, { total: 5, new: 4, subscribed: 1, invalid: 2, folders: 4 });
     assert.equal(preview.entries.find((e) => e.title === "Beta & Co")?.status, "subscribed");
 
-    const result = importOpml(store, OPML, { tier: "private", skip: ["https://gamma.example/atom"] });
-    assert.deepEqual(result, { added: 3, alreadySubscribed: 1, skipped: 1, invalid: 2 });
+    const result = await importOpml(store, OPML, { tier: "private", skip: ["https://gamma.example/atom"] });
+    assert.deepEqual(result, { added: 3, alreadySubscribed: 1, skipped: 1, invalid: 2, withheld: 0 });
     const sources = store.listSources();
     assert.equal(sources.length, 4);
     const alpha = sources.find((s) => s.url === "https://alpha.example/feed.xml");
@@ -77,9 +80,9 @@ test("previewOpml marks what is already subscribed, and importOpml adds the rest
     assert.equal(sources.find((s) => s.url === "https://beta.example/rss")?.folder, "Old", "an existing subscription is left as it was");
     assert.equal(sources.find((s) => s.title === "A Channel")?.kind, "youtube");
 
-    const again = importOpml(store, OPML);
+    const again = await importOpml(store, OPML);
     assert.equal(again.added, 1, "only the one that was skipped is new on a second run");
-    assert.equal(importOpml(store, OPML).added, 0, "a third run adds nothing");
+    assert.equal((await importOpml(store, OPML)).added, 0, "a third run adds nothing");
   } finally {
     store.close();
     rmSync(dir, { recursive: true, force: true });
@@ -122,7 +125,7 @@ test("the API previews and imports an OPML file and rejects empty or unreadable 
 
     const done = await r.call("POST", "/api/import/opml", { opml: OPML, tier: "private", skip: ["https://loose.example/feed"] });
     assert.equal(done.status, 201);
-    assert.deepEqual(await done.json(), { added: 4, alreadySubscribed: 0, skipped: 1, invalid: 2 });
+    assert.deepEqual(await done.json(), { added: 4, alreadySubscribed: 0, skipped: 1, invalid: 2, withheld: 0 });
     const sources = r.store.listSources();
     assert.equal(sources.length, 4);
     assert.ok(sources.every((s) => s.tier === "private"));
@@ -147,5 +150,80 @@ test("POST /api/items/read-all marks every unread item read and says how many", 
     assert.equal(((await (await r.call("POST", "/api/items/read-all", {})).json()) as { marked: number }).marked, 0);
   } finally {
     await r.close();
+  }
+});
+
+class MemBackend implements SecretBackend {
+  readonly id = "mem";
+  readonly writable = true;
+  readonly values = new Map<string, string>();
+  async available() {
+    return true;
+  }
+  async get(name: string) {
+    return this.values.get(name);
+  }
+  async set(name: string, value: string) {
+    this.values.set(name, value);
+  }
+  async delete(name: string) {
+    this.values.delete(name);
+  }
+}
+
+const LINK = "https://tracker.example/calendar.atom?slurm=not-a-real-value-1234&user=pat";
+const PRIVATE_OPML = `<opml version="1.0"><body><outline text="Work"><outline type="rss" text="Tracker" xmlUrl="${LINK.replace(/&/g, "&amp;")}"/></outline><outline type="rss" text="Open" xmlUrl="https://open.example/feed"/></body></opml>`;
+
+test("carriesLogin spots an address that holds a login and leaves ordinary addresses alone", () => {
+  assert.equal(carriesLogin(LINK), true);
+  assert.equal(carriesLogin("https://pat:hunter2@feeds.example/rss"), true);
+  assert.equal(carriesLogin("https://feeds.example/rss?token=abc123"), true);
+  assert.equal(carriesLogin("https://feeds.example/rss?token="), false, "an empty value holds nothing");
+  assert.equal(carriesLogin("https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv"), false);
+  assert.equal(carriesLogin("https://open.example/feed"), false);
+  assert.equal(carriesLogin("not a url"), false);
+});
+
+test("an OPML feed whose address carries a login is stored masked and private, with its address in the secret store", async () => {
+  const dir = tempDir();
+  const store = new Store(join(dir, "j.sqlite"));
+  try {
+    const backend = new MemBackend();
+    const credentials = new Credentials(new SecretStore([backend], new Redactor()));
+    const preview = await previewOpml(store, PRIVATE_OPML, credentials);
+    const entry = preview.entries.find((e) => e.title === "Tracker")!;
+    assert.ok(entry.privateLink);
+    assert.ok(!JSON.stringify(preview).includes("not-a-real-value"), "a preview never repeats the login");
+
+    const done = await importOpml(store, PRIVATE_OPML, { tier: "public", credentials });
+    assert.deepEqual(done, { added: 2, alreadySubscribed: 0, skipped: 0, invalid: 0, withheld: 0 });
+    const tracker = store.listSources().find((s) => s.title === "Tracker")!;
+    assert.equal(tracker.tier, "private", "a private link is always private, whatever tier was chosen");
+    assert.equal(tracker.auth, "url");
+    assert.ok(!tracker.url.includes("not-a-real-value") && tracker.url.startsWith("https://tracker.example/***#secret-"));
+    assert.equal((await credentials.load(tracker.id))?.kind, "url");
+    assert.equal(store.listSources().find((s) => s.title === "Open")?.tier, "public");
+    assert.ok(!JSON.stringify(store.listSources()).includes("not-a-real-value"), "the database holds no login");
+
+    assert.equal((await importOpml(store, PRIVATE_OPML, { credentials })).alreadySubscribed, 2, "a second run adds nothing");
+    assert.equal((await previewOpml(store, PRIVATE_OPML, credentials)).entries.find((e) => e.title === "Tracker")?.status, "subscribed");
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("without a secret store, a feed whose address carries a login is left out instead of stored in the clear", async () => {
+  const dir = tempDir();
+  const store = new Store(join(dir, "j.sqlite"));
+  try {
+    const done = await importOpml(store, PRIVATE_OPML);
+    assert.deepEqual(done, { added: 1, alreadySubscribed: 0, skipped: 0, invalid: 0, withheld: 1 });
+    assert.ok(!JSON.stringify(store.listSources()).includes("not-a-real-value"));
+    const skipped = await importOpml(store, PRIVATE_OPML.replace("https://open.example/feed", "ftp://bad.example/x?token=zzz"));
+    assert.equal(skipped.invalid, 1);
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
   }
 });

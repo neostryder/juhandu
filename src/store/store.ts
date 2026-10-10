@@ -180,6 +180,7 @@ export type ItemView = "inbox" | "filtered" | "all";
 
 export interface ItemQuery {
   limit?: number;
+  /** The id of the last item of the previous page; the page that follows is the items after it in the list's own order (newest first). An unknown id returns nothing. */
   beforeId?: number;
   sourceId?: number;
   /** Items from any of these sources (pipes read several at once). */
@@ -752,7 +753,8 @@ export class Store {
       params.push(query.itemId);
     }
     if (query.beforeId !== undefined) {
-      where.push("i.id < ?");
+      // A keyset cursor on the same key the list is sorted by, so paging from the last item of a page walks every item once.
+      where.push("(COALESCE(i.published_at, i.fetched_at), i.id) < (SELECT COALESCE(c.published_at, c.fetched_at), c.id FROM items c WHERE c.id = ?)");
       params.push(query.beforeId);
     }
     const view = query.view ?? "all";

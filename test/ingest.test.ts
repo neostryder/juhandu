@@ -125,3 +125,22 @@ test("HTTP API: add a source by URL, list items, mark read, reject bad input", a
     store.close();
   }
 });
+
+test("paging from the last item of a page walks every item once, even when dates and ids disagree", () => {
+  const store = new Store(":memory:");
+  const source = store.addSource({ kind: "feed", url: "https://page.example/feed" });
+  const make = (guid: string, publishedAt: string | null) => ({ guid, url: `https://page.example/${guid}`, title: guid, author: "", publishedAt, summaryText: "", contentHtml: "", image: "", titleHash: guid, extra: {} });
+  // Inserted out of date order, so the newest item does not have the highest id, and one item has no date at all.
+  store.upsertItems(source.id, [make("e", "2026-10-05T00:00:00Z"), make("a", "2026-10-09T00:00:00Z"), make("c", "2026-10-07T00:00:00Z"), make("b", "2026-10-08T00:00:00Z"), make("d", "2026-10-06T00:00:00Z"), make("f", null)], new Date("2026-10-01T00:00:00Z"));
+  const seen: string[] = [];
+  let before: number | undefined;
+  for (let pages = 0; pages < 10; pages++) {
+    const page = store.listItems({ limit: 2, ...(before !== undefined ? { beforeId: before } : {}) });
+    if (!page.length) break;
+    seen.push(...page.map((p) => p.title));
+    before = page[page.length - 1]!.id;
+  }
+  assert.deepEqual(seen, ["a", "b", "c", "d", "e", "f"]);
+  assert.deepEqual(store.listItems({ limit: 5, beforeId: 99999 }), [], "an unknown cursor returns nothing instead of repeating the first page");
+  store.close();
+});

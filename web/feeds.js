@@ -106,7 +106,7 @@ class VzFeeds extends HTMLElement {
           if (!loaded) return;
           try {
             const done = await api("/api/import/opml", { json: { opml: loaded.text, tier: tier.value, skip } });
-            out.textContent = `Added ${done.added} feeds. They are fetched in the background over the next few minutes.`;
+            out.textContent = `Added ${done.added} feeds. They are fetched in the background over the next few minutes.${done.withheld ? (done.withheld === 1 ? " Skipped 1 feed whose address contains a login, since no secret store is set up." : ` Skipped ${done.withheld} feeds whose addresses contain a login, since no secret store is set up.`) : ""}`;
             result.replaceChildren(this.catchUp());
             await this.load();
           } catch (error) {
@@ -139,7 +139,7 @@ class VzFeeds extends HTMLElement {
       const items = list.map((/** @type {any} */ e) => {
         const box = /** @type {HTMLInputElement} */ (el("input", { type: "checkbox", checked: e.status === "new", disabled: e.status !== "new", "aria-label": e.title || e.url }));
         boxes.set(e.url, box);
-        return el("li", {}, el("label", {}, box, el("span", { text: `${e.title || e.url}${e.kind === "youtube" ? " (YouTube)" : ""}${e.status === "subscribed" ? " - already subscribed" : ""}` })));
+        return el("li", {}, el("label", {}, box, el("span", { text: `${e.title || e.url}${e.kind === "youtube" ? " (YouTube)" : ""}${e.privateLink ? " (private link)" : ""}${e.status === "subscribed" ? " - already subscribed" : ""}` })));
       });
       wrap.append(el("details", { open: list.length <= 12 }, el("summary", { text: `${folder || "(no folder)"} - ${list.length}` }), el("ul", { class: "preview" }, ...items)));
     }

@@ -709,9 +709,9 @@ export function createApp(deps: AppDeps): Server {
         const text = typeof body["opml"] === "string" ? body["opml"] : "";
         if (!text.trim()) throw new HttpError(400, "The OPML text is empty");
         try {
-          if (path.endsWith("/preview")) return send(res, 200, previewOpml(store, text));
+          if (path.endsWith("/preview")) return send(res, 200, await previewOpml(store, text, credentials));
           const skip = Array.isArray(body["skip"]) ? body["skip"].filter((s): s is string => typeof s === "string") : [];
-          return send(res, 201, importOpml(store, text, { tier: body["tier"] === "private" ? "private" : "public", skip }));
+          return send(res, 201, await importOpml(store, text, { tier: body["tier"] === "private" ? "private" : "public", skip, ...(credentials ? { credentials } : {}) }));
         } catch (error) {
           throw new HttpError(422, error instanceof Error ? error.message : "Could not read that file");
         }

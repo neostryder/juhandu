@@ -23,6 +23,8 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 - [Visible] [Security] **The MCP endpoint no longer treats a request through a proxy as local.** Without an access token, a request that carries a proxy header such as `X-Forwarded-For` or `Cf-Connecting-Ip`, or that is addressed to a name in `JUHANDU_PUBLIC_HOST`, is refused.
 - [Visible] **A Gemini key that Google reports as invalid pauses Gemini for an hour, as a refused key already did.** An invalid key used to be tried again on every video.
 - [Visible] [UI] **The AI assistants section describes what assistants can do with the switches as they are set.** It used to say assistants could only read, even when changes were switched on.
+- [Visible] [API] **Paging the reading list with `before` (and the MCP tool's `before_id`) now visits every item once.** Pages used to repeat or skip items when published dates and item ids disagreed, as with a feed that backfills older posts. An id that does not exist now returns an empty page instead of the first page again.
+- [Visible] [Security] **OPML import no longer stores a login found inside a feed address in the clear.** An address with a name and password before the host, or a query value such as `token` or `key`, is now added as a masked private link with the real address in the secret store, the same as adding one by hand. Without a secret store, those feeds are left out and the import result says how many.
 
 ## [0.1.0] - 2026-10-09
 
