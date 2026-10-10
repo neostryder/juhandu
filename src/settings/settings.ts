@@ -2,6 +2,7 @@
 // Every setting has an environment variable, and a variable that is set always wins over the saved value, so a server set up through its
 // environment keeps working and the screen shows those values as set by the server. Addresses, model names and switches are kept in the
 // database's meta table; keys go to the secret store, and only whether a key is set ever leaves this file.
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { buildProvider, chooseAdapter, cogitatorPresent, endpointFrom, isLoopback } from "../models/setup.ts";
 import type { OpenAIEndpoint } from "../models/openai.ts";
@@ -42,6 +43,12 @@ export const ENDPOINTS: readonly EndpointSpec[] = [
 const HOSTS: HostChoice[] = ["auto", "openai", "cogitator", "off"];
 const META = "settings:connect";
 const GEMINI_SECRETS = ["gemini_api_key", "gemini/key"];
+const GEMINI_TEST_META = "settings:gemini-test";
+
+/** A short fingerprint of a key: enough to tell that the key changed, and too short to stand in for it or lead back to it. */
+function fingerprint(key: string): string {
+  return createHash("sha256").update(`juhandu-key-fingerprint:${key}`).digest("hex").slice(0, 16);
+}
 
 interface SavedEndpoint {
   url?: string;
@@ -402,10 +409,30 @@ export class AppSettings {
     return redactResult(await probe(endpoint, this.fetchImpl), this.secrets);
   }
 
+  private async geminiKey(): Promise<string | undefined> {
+    return this.env["JUHANDU_GEMINI_KEY"] || (await this.secrets.get("gemini_api_key")) || (await this.secrets.get("gemini/key"));
+  }
+
+  /** Tests the Gemini key. A failure is remembered against a fingerprint of the key, so the screen keeps showing it until a Test passes or the key changes. */
   async testGemini(): Promise<ProbeResult> {
-    const key = this.env["JUHANDU_GEMINI_KEY"] || (await this.secrets.get("gemini_api_key")) || (await this.secrets.get("gemini/key"));
+    const key = await this.geminiKey();
     if (!key) return { ok: false, message: "No Gemini key is saved yet. Paste one and save first." };
-    return redactResult(await probeGemini(key, this.fetchImpl), this.secrets);
+    const result = redactResult(await probeGemini(key, this.fetchImpl), this.secrets);
+    this.store.setMeta(GEMINI_TEST_META, JSON.stringify(result.ok ? {} : { key: fingerprint(key), message: result.message }));
+    return result;
+  }
+
+  /** What the last Gemini Test said when it failed, or null when it passed, never ran, or ran with a key that is no longer in use. */
+  async geminiTestFailure(): Promise<string | null> {
+    let last: { key?: unknown; message?: unknown };
+    try {
+      last = JSON.parse(this.store.getMeta(GEMINI_TEST_META) ?? "{}") as typeof last;
+    } catch {
+      return null;
+    }
+    if (typeof last.key !== "string" || typeof last.message !== "string") return null;
+    const key = await this.geminiKey();
+    return key && fingerprint(key) === last.key ? last.message : null;
   }
 
   async testCogitator(): Promise<ProbeResult> {

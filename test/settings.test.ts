@@ -13,6 +13,7 @@ import { probeChat, probeGemini, silentWav, greySquarePng } from "../src/setting
 import { AppSettings, SettingsError } from "../src/settings/settings.ts";
 import { Store } from "../src/store/store.ts";
 import { ProgramFinder } from "../src/video/exec.ts";
+import type { VideoReader } from "../src/video/reader.ts";
 
 class MemBackend implements SecretBackend {
   readonly id = "mem";
@@ -237,6 +238,76 @@ test("the settings API keeps keys server side, asks before internal addresses an
     assert.equal((await call(port, "PUT", "/api/setup", json, JSON.stringify({ dismissed: true }))).status, 200);
     assert.equal((JSON.parse((await call(port, "GET", "/api/setup", {})).text) as { dismissed: boolean }).dismissed, true);
     assert.equal((await call(port, "PUT", "/api/setup", json, JSON.stringify({ dismissed: "yes" }))).status, 400);
+    assert.equal((await call(port, "PUT", "/api/setup", json, JSON.stringify({ dismissed: false }))).status, 200, "a hidden list can be shown again");
+    assert.equal((JSON.parse((await call(port, "GET", "/api/setup", {})).text) as { dismissed: boolean }).dismissed, false);
+  } finally {
+    await new Promise<void>((done) => app.close(() => done()));
+    store.close();
+  }
+});
+
+test("the embedding and vision Test buttons send a real request and report what came back", async () => {
+  const seen: { url: string; auth: string; body: Record<string, any> }[] = [];
+  let embedding: number[] = [0.1, 0.2, 0.3];
+  const fake = fakeFetch((c) => {
+    const headers = (c.init?.headers ?? {}) as Record<string, string>;
+    const body = JSON.parse(String(c.init?.body)) as Record<string, any>;
+    seen.push({ url: c.url, auth: headers["authorization"] ?? "", body });
+    if (c.url.endsWith("/embeddings")) return Response.json({ data: [{ embedding }] });
+    if (body["model"] === "missing-model") return Response.json({ error: { code: "model_not_found" } }, { status: 404 });
+    return Response.json({ choices: [{ message: { content: "grey" } }] });
+  });
+  const { settings } = setup({}, fake.impl);
+  assert.deepEqual(await settings.testEndpoint("embed"), { ok: false, message: "No address is saved yet. Add one and save first." });
+  await settings.saveEndpoint("embed", { url: "https://models.example.com/v1", model: "bge-m3", key: SECRET });
+  assert.deepEqual(await settings.testEndpoint("embed"), { ok: true, message: "The embedding model bge-m3 answered with 3 numbers per text." });
+  assert.equal(seen[0]!.url, "https://models.example.com/v1/embeddings");
+  assert.equal(seen[0]!.auth, `Bearer ${SECRET}`, "the saved key goes with the request");
+  assert.deepEqual(seen[0]!.body["input"], ["A test sentence."]);
+  embedding = [];
+  assert.match((await settings.testEndpoint("embed")).message, /sent back no embedding/);
+
+  await settings.saveEndpoint("vision", { url: "https://models.example.com/v1", model: "qwen-vl" });
+  assert.deepEqual(await settings.testEndpoint("vision"), { ok: true, message: "The vision server answered with qwen-vl." });
+  const visionCall = seen.at(-1)!;
+  assert.equal(visionCall.url, "https://models.example.com/v1/chat/completions");
+  assert.equal(visionCall.auth, "", "no key is sent when none is saved");
+  const parts = visionCall.body["messages"][0].content as { type: string; image_url?: { url: string } }[];
+  assert.ok(parts.some((p) => p.type === "image_url" && p.image_url?.url.startsWith("data:image/png;base64,")), "the vision test sends a picture");
+  await settings.saveEndpoint("vision", { model: "missing-model" });
+  assert.match((await settings.testEndpoint("vision")).message, /no model called missing-model/);
+});
+
+test("a failed Gemini Test is shown until a Test passes or the key changes, and the key never reaches the database", async () => {
+  let accept = false;
+  const fake = fakeFetch(() => (accept ? Response.json({ models: [] }) : Response.json({ error: { status: "INVALID_ARGUMENT", details: [{ reason: "API_KEY_INVALID" }] } }, { status: 400 })));
+  const { store, secrets, settings } = setup({}, fake.impl);
+  const reader = { status: async () => [{ id: "gemini", label: "Gemini", ready: true, reason: "" }] } as unknown as VideoReader;
+  const app = createApp({ store, ingestor: new Ingestor(store), secrets, settings, videoReader: reader, webRoot: ".", version: "test" });
+  await new Promise<void>((done) => app.listen(0, "127.0.0.1", done));
+  const port = (app.address() as AddressInfo).port;
+  const gemini = async () => (JSON.parse((await call(port, "GET", "/api/video", {})).text) as { rungs: { id: string; ready: boolean; failed?: boolean; reason: string }[] }).rungs[0]!;
+  const videoStep = async () => (JSON.parse((await call(port, "GET", "/api/setup", {})).text) as { steps: { video: boolean } }).steps.video;
+  try {
+    await settings.saveVideo({ geminiKey: BAD_KEY });
+    assert.equal((await gemini()).ready, true, "a key that was never tested counts as ready");
+    assert.equal((await settings.testGemini()).ok, false);
+    const failed = await gemini();
+    assert.equal(failed.ready, false);
+    assert.equal(failed.failed, true);
+    assert.match(failed.reason, /not valid/);
+    assert.equal(await videoStep(), false, "the checklist does not count a key that failed its Test");
+    assert.ok(!(store.getMeta("settings:gemini-test") ?? "").includes(BAD_KEY), "only a fingerprint of the key is kept");
+
+    await secrets.set("gemini_api_key", "AIza-a-different-key");
+    assert.equal((await gemini()).ready, true, "a changed key clears the failure");
+    await secrets.set("gemini_api_key", BAD_KEY);
+    assert.equal((await gemini()).failed, true, "the same failing key brings it back");
+
+    accept = true;
+    assert.equal((await settings.testGemini()).ok, true);
+    assert.equal((await gemini()).ready, true, "a passing Test clears the failure");
+    assert.equal(await videoStep(), true);
   } finally {
     await new Promise<void>((done) => app.close(() => done()));
     store.close();

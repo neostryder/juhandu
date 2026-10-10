@@ -46,6 +46,8 @@ const STYLES = `
   a.button { display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: 4px; color: var(--text); text-decoration: none; }
   a.button:hover { border-color: var(--accent); }
   a:not(.button) { color: var(--accent); }
+  .again { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 14px; }
+  .again p { margin: 0; }
   [hidden] { display: none !important; }
 `;
 
@@ -118,6 +120,7 @@ class VzConnect extends HTMLElement {
         <h2>Connect</h2>
         <p class="lede muted">Connect the models that summarize your feeds, choose how videos are read, send your daily briefing where you will see it, and let an AI assistant read your feeds.</p>
         <div id="status" role="status" class="muted"></div>
+        <div id="setupAgain" class="again" hidden></div>
         <h3 id="models-head">Models</h3>
         <p class="help">Juhandu works without a model, but summaries, briefings, and rule suggestions need a chat model, and spotting the same story in different feeds needs an embedding model. Any server that speaks the OpenAI API works, such as llama.cpp, Ollama, LM Studio, vLLM, or a hosted service.</p>
         <div id="models"></div>
@@ -155,7 +158,15 @@ class VzConnect extends HTMLElement {
   /** @param {string} [section] Scrolls to models, video, delivery, assistants or training once the screen is drawn. */
   async load(section = "") {
     try {
-      const [notify, mcp, training, video, settings] = await Promise.all([api("/api/notify"), api("/api/mcp"), api("/api/training").catch(() => null), api("/api/video").catch(() => null), api("/api/settings").catch(() => null)]);
+      const [notify, mcp, training, video, settings, setup] = await Promise.all([
+        api("/api/notify"),
+        api("/api/mcp"),
+        api("/api/training").catch(() => null),
+        api("/api/video").catch(() => null),
+        api("/api/settings").catch(() => null),
+        api("/api/setup").catch(() => null),
+      ]);
+      this.renderSetupAgain(setup);
       this.channels = notify.channels;
       this.mcp = mcp;
       this.settings = settings;
@@ -169,6 +180,30 @@ class VzConnect extends HTMLElement {
     } catch (error) {
       this.say(messageOf(error));
     }
+  }
+
+  /**
+   * Offers to bring back a hidden Getting started list, while it still has steps left.
+   * @param {{ dismissed: boolean, steps: Record<string, boolean> } | null} setup
+   */
+  renderSetupAgain(setup) {
+    const host = this.$("setupAgain");
+    const left = setup ? Object.values(setup.steps).filter((done) => !done).length : 0;
+    if (!setup?.dismissed || !left) {
+      if (!host.querySelector(".ok")) host.hidden = true;
+      return;
+    }
+    const show = el("button", { type: "button", text: "Show the getting started list again" });
+    show.addEventListener("click", async () => {
+      try {
+        await api("/api/setup", { method: "PUT", json: { dismissed: false } });
+        host.replaceChildren(el("p", { class: "last ok", role: "status", text: "The list is back on the Briefing and Reading screens." }));
+      } catch (error) {
+        this.say(messageOf(error));
+      }
+    });
+    host.replaceChildren(el("p", { class: "help", text: "The getting started list is hidden." }), show);
+    host.hidden = false;
   }
 
   // ---- shared pieces ----
@@ -559,10 +594,10 @@ class VzConnect extends HTMLElement {
       if (await store()) await this.load();
     });
     test.addEventListener("click", async () => {
-      const dirty = Object.keys(changes()).length > 0;
       if (!(await store())) return;
       await this.runTest("/api/settings/video/gemini/test", note.set);
-      if (dirty) await this.load();
+      // The badge follows the result, so the card is drawn again.
+      await this.load();
     });
     key.remove?.addEventListener("click", async () => {
       if (await this.putSettings("/api/settings/video", { geminiKey: null }, confirm, note.set)) {
@@ -571,12 +606,19 @@ class VzConnect extends HTMLElement {
       }
     });
     const link = el("a", { href: "https://aistudio.google.com/apikey", target: "_blank", rel: "noopener noreferrer", text: "Google AI Studio" });
+    // A failed Test outranks Ready: the badge says so until a Test passes or the key changes, and the note under the buttons says why.
+    const badge = rung?.failed
+      ? el("span", { class: "state bad", text: "Test failed" })
+      : rung?.ready
+        ? el("span", { class: "state ok", text: "Ready" })
+        : el("span", { class: "state", text: "Not set up" });
+    if (rung?.failed && !this.notes["gemini"]) note.set(rung.reason, "bad");
     return el(
       "section",
       { class: `card${rung?.ready ? " on" : ""}` },
-      el("div", { class: "top" }, el("div", { class: "name" }, el("h3", { text: "1. Gemini reads the video" }), rung?.ready ? el("span", { class: "state ok", text: "Ready" }) : el("span", { class: "state", text: "Not set up" }))),
+      el("div", { class: "top" }, el("div", { class: "name" }, el("h3", { text: "1. Gemini reads the video" }), badge)),
       el("p", { class: "help" }, "Google's Gemini watches a public video from its address, so nothing is downloaded here. Make a key in ", link, " and paste it below."),
-      rung && !rung.ready ? el("p", { class: "last", text: rung.reason }) : null,
+      rung && !rung.ready && !rung.failed ? el("p", { class: "last", text: rung.reason }) : null,
       use.row,
       key.field,
       el("div", { class: "actions" }, save, test),

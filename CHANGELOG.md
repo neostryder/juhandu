@@ -7,8 +7,8 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 ### Added
 
 - [Visible] **Juhandu can run in Docker with the included `Dockerfile` and `compose.yaml`.** The container runs as an unprivileged user, keeps the database and secrets in a data volume, reports its health from `/api/health`, and publishes the port on 127.0.0.1 only. The image includes yt-dlp for reading video captions, and building with `VIDEO_TOOLS=full` adds ffmpeg as well.
-- [Visible] [UI] **The Connect screen sets up models and video reading, with a Test button for each.** Chat and embedding endpoints, Cogitator, the Gemini key, and the speech and vision servers can be saved without a restart. Keys go to the secret store, and an environment variable still wins over a saved value.
-- [Visible] [UI] **A Getting started list on the Briefing and Reading screens tracks the first steps.** It covers adding a feed, connecting a chat model, setting up video reading, and choosing where the briefing goes, links each step to its screen, and can be hidden.
+- [Visible] [UI] **The Connect screen sets up models and video reading, with a Test button for each.** Chat and embedding endpoints, Cogitator, the Gemini key, and the speech and vision servers can be saved without a restart. Keys go to the secret store, and an environment variable still wins over a saved value. When the Gemini key fails its Test, the card says so until a later Test passes or a new key is saved.
+- [Visible] [UI] **A Getting started list on the Briefing and Reading screens tracks the first steps.** It covers adding a feed, connecting a chat model, setting up video reading, and choosing where the briefing goes, and links each step to its screen. Once hidden, it comes back from a button at the top of the Connect screen.
 
 ### Changed
 

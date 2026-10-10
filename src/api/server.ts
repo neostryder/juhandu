@@ -25,6 +25,7 @@ import { Briefer, renderMarkdown } from "../briefing/briefer.ts";
 import type { BriefingKind } from "../briefing/briefer.ts";
 import type { ItemSummarizer } from "../summarize/summarizer.ts";
 import type { VideoReader } from "../video/reader.ts";
+import type { RungStatus } from "../video/types.ts";
 import type { DataTier, ItemView, NewRule, Proposal, Source, Store } from "../store/store.ts";
 import type { Proposer } from "../proposals/proposer.ts";
 import type { LearningAsk } from "../taste/ask.ts";
@@ -285,6 +286,13 @@ export function createApp(deps: AppDeps): Server {
       throw new HttpError(422, error instanceof Error ? error.message : "That pipe cannot run");
     }
   };
+  /** The video reader's ways of reading. Gemini counts as not ready while the last Test of the key in use failed. */
+  const videoRungs = async (): Promise<RungStatus[]> => {
+    const rungs = deps.videoReader ? await deps.videoReader.status() : [];
+    const failure = deps.settings ? await deps.settings.geminiTestFailure() : null;
+    if (!failure) return rungs;
+    return rungs.map((r) => (r.id === "gemini" && r.ready ? { ...r, ready: false, failed: true, reason: failure } : r));
+  };
   const mcpServer = deps.mcp ? new McpServer({ store, briefer, pipes, settings: () => (deps.mcp as McpAccess).settings(), version: deps.version }) : undefined;
   const channelOf = (raw: string | undefined): ChannelId => {
     const id = CHANNELS.find((c) => c === raw);
@@ -414,7 +422,7 @@ export function createApp(deps: AppDeps): Server {
         if (method === "POST" && video && test === "/gemini/test") return send(res, 200, await settings.testGemini());
       }
       if (path === "/api/setup" && method === "GET") {
-        const rungs = deps.videoReader ? await deps.videoReader.status() : [];
+        const rungs = await videoRungs();
         const channels = deps.notifier ? await deps.notifier.status() : [];
         return send(res, 200, {
           dismissed: store.getMeta("setup:dismissed") === "1",
@@ -434,7 +442,7 @@ export function createApp(deps: AppDeps): Server {
       }
       if (method === "GET" && path === "/api/video") {
         const summary = store.videoSummary();
-        return send(res, 200, { enabled: Boolean(deps.videoReader), rungs: deps.videoReader ? await deps.videoReader.status() : [], ...summary });
+        return send(res, 200, { enabled: Boolean(deps.videoReader), rungs: await videoRungs(), ...summary });
       }
       if (method === "GET" && path === "/api/training") {
         const built = buildTrainingExport(store, { includePrivate: url.searchParams.get("private") === "1" });

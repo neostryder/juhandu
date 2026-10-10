@@ -54,4 +54,6 @@ export interface RungStatus {
   ready: boolean;
   /** Why it is not ready. */
   reason: string;
+  /** True when the last Test of this way failed, in which case reason says what the Test found. */
+  failed?: boolean;
 }
