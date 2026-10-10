@@ -4,6 +4,10 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Added
+
+- [Visible] **Juhandu can run in Docker with the included `Dockerfile` and `compose.yaml`.** The container runs as an unprivileged user, keeps the database and secrets in a data volume, reports its health from `/api/health`, and publishes the port on 127.0.0.1 only. Building with `VIDEO_TOOLS=true` adds yt-dlp and ffmpeg for reading videos.
+
 ## [0.1.0] - 2026-10-09
 
 ### Added

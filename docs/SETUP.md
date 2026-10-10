@@ -58,6 +58,56 @@ Juhandu has no sign-in yet, so anything beyond this machine should reach it only
 
 Programs that call the API directly follow the same rule, and a request with a body must send it with `Content-Type: application/json`, or it is refused with a 415.
 
+## Running in Docker
+
+The repository has a `Dockerfile` and a `compose.yaml`. From the project folder, this builds the image and starts Juhandu in the background on http://127.0.0.1:8787:
+
+```
+docker compose up -d --build
+```
+
+The image is built from `node:26-alpine`, holds only `package.json`, `src` and `web`, installs no npm packages, and runs `node src/main.ts` as the unprivileged `node` user. A health check calls `/api/health` every 30 seconds, and `docker compose ps` shows the service as `healthy` once it answers. To follow the log:
+
+```
+docker compose logs -f
+```
+
+The database and the secrets folder live in a Docker volume mounted at `/data` (`JUHANDU_DATA=/data`), so they survive restarts and rebuilds. The operating system's credential store and Bitwarden Secrets Manager are not available in the container, so secrets come from environment variables or from the `dir` backend at `/data/secrets`, whose files only the owner can read. `node src/secrets/cli.ts set` writes new secrets to that folder. On Windows, pipe the value in with `type key.txt |` in place of the `<` redirection:
+
+```
+docker compose exec -T juhandu node src/secrets/cli.ts set chat/key < key.txt
+```
+
+Settings go in a `.env` file next to `compose.yaml`, one `NAME=value` per line, and compose reads it when it exists. Secrets can go there too, as `JUHANDU_SECRET_<NAME>` variables or as keys such as `JUHANDU_CHAT_KEY`. Run `docker compose up -d` after changing the file so the container starts again with the new values. Leave `JUHANDU_HOST`, `JUHANDU_PORT` and `JUHANDU_DATA` to the image. To use a different port on the host, set `JUHANDU_HOST_PORT`, and the container keeps listening on 8787.
+
+Inside the container the server listens on `0.0.0.0`, so the start-up warning about listening beyond this machine always prints there. The warning describes the address inside the container. `compose.yaml` publishes the port on the host's 127.0.0.1 only, so nothing else on the network reaches it.
+
+From inside the container, `127.0.0.1` is the container itself, so a model server running on the Docker host is reached at `host.docker.internal`, for example `JUHANDU_CHAT_URL=http://host.docker.internal:8080/v1`. Docker Desktop provides that name. On Linux, add `extra_hosts: ["host.docker.internal:host-gateway"]` to the `juhandu` service in `compose.yaml`. Since `host.docker.internal` is not a loopback address, Juhandu treats that endpoint as off this machine and sends it no private items. To let private items through, set the endpoint's `_LOCAL` variable to `1`, such as `JUHANDU_CHAT_LOCAL=1`, or name the endpoint in `JUHANDU_PRIVATE_ALLOW`, such as `JUHANDU_PRIVATE_ALLOW=embeddings,chat`.
+
+Reading videos from captions, audio and frames needs yt-dlp and ffmpeg, which the image leaves out unless it is built with `VIDEO_TOOLS=true`. Without them, those steps are skipped with a note in the log. To build them in every time, replace the `build: .` line in `compose.yaml` with this one, then run `docker compose up -d --build`:
+
+```
+    build: { context: ., args: { VIDEO_TOOLS: "true" } }
+```
+
+To reach Juhandu from other machines, put a reverse proxy that authenticates every request in front of it, as described above, and set `JUHANDU_PUBLIC_HOST` in `.env` to the proxy's public name. Compose passes it to the container. A proxy on the same host forwards to `127.0.0.1:8787`. Change the `ports` line in `compose.yaml` to publish beyond 127.0.0.1 only for a proxy that cannot reach that address, such as one on another machine.
+
+To upgrade, pull the new code and rebuild. The data volume is kept.
+
+```
+git pull
+```
+
+```
+docker compose up -d --build
+```
+
+`docker compose down` stops and removes the container and keeps the data volume. To delete the database and the secrets folder as well:
+
+```
+docker compose down -v
+```
+
 ## Settings
 
 Server and briefing:

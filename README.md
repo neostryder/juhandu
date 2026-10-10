@@ -84,6 +84,14 @@ npm start
 
 Open http://127.0.0.1:8787 and add a feed from the Reading screen. Data goes in a `data` folder in the project unless `JUHANDU_DATA` names another one. `npm install` is needed only for the type checker.
 
+Juhandu also runs in Docker. From the project folder, this builds the image and starts it on http://127.0.0.1:8787:
+
+```
+docker compose up -d --build
+```
+
+[docs/SETUP.md](docs/SETUP.md#running-in-docker) covers settings, secrets, model servers on the host, video tools and upgrades for the container.
+
 ## Connecting models
 
 Settings are environment variables. To turn on the AI features, point `JUHANDU_EMBED_URL` and `JUHANDU_CHAT_URL` at any OpenAI-style embedding and chat endpoints, such as a model server running on this machine. The start-up log says which model adapter Juhandu chose, or that AI features are off. [docs/SETUP.md](docs/SETUP.md) lists every setting, explains the judges and the optional integrations, and covers secrets and the command-line tools.

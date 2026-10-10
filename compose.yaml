@@ -1,0 +1,20 @@
+services:
+  juhandu:
+    build: .
+    image: juhandu:local
+    restart: unless-stopped
+    # Loopback only: Juhandu has no sign-in yet. Put a reverse proxy that authenticates in front of it before publishing the port any wider.
+    ports:
+      - "127.0.0.1:${JUHANDU_HOST_PORT:-8787}:8787"
+    volumes:
+      - juhandu-data:/data
+    # Settings and the names of secrets can go in a .env file beside this one; see docs/SETUP.md for every variable.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Set this to the public name a reverse proxy serves, such as juhandu.example.com, or the web app's own API calls are refused.
+      JUHANDU_PUBLIC_HOST: ${JUHANDU_PUBLIC_HOST:-}
+
+volumes:
+  juhandu-data:

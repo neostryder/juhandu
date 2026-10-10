@@ -6,6 +6,10 @@ Juhandu has no runtime npm dependencies. The server uses only Node's own modules
 
 Juhandu needs Node 26 or newer, as set by `engines` in `package.json`. Node runs the TypeScript source directly by stripping the types, so there is no compiler or bundler in the path from source to running server.
 
+## Docker
+
+Docker is an optional way to run Juhandu. The `Dockerfile` builds from the `node:26-alpine` image, copies in the source, and installs no npm packages. Built with `--build-arg VIDEO_TOOLS=true`, the image also gets Alpine's `yt-dlp` and `ffmpeg` packages, the programs listed under Optional programs below; otherwise neither is in it. The image has no credential store programs and no `bws`, so those secret backends show as not available there.
+
 ## Development dependencies
 
 These are installed by `npm install` and used only for type checking. Versions are the ones pinned in `package-lock.json`, and licenses are taken from each package's own `package.json`.

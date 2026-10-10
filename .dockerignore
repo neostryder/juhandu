@@ -1,0 +1,15 @@
+.git
+.github
+.claude
+node_modules
+data
+local
+tmp
+test
+docs
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.env
+Dockerfile
+compose.yaml

@@ -26,3 +26,18 @@ jobs:
       - uses: gitleaks/gitleaks-action@v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t juhandu:ci .
+      - name: Start the image and wait for its health check
+        run: |
+          docker run -d --name juhandu-ci -p 127.0.0.1:8787:8787 juhandu:ci
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8787/api/health && exit 0
+            sleep 2
+          done
+          docker logs juhandu-ci
+          exit 1
