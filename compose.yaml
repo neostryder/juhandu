@@ -1,6 +1,10 @@
 services:
   juhandu:
-    build: .
+    build:
+      context: .
+      args:
+        # captions (the default) adds yt-dlp for reading video captions, full also adds ffmpeg, and none adds neither. See docs/SETUP.md.
+        VIDEO_TOOLS: ${VIDEO_TOOLS:-captions}
     image: juhandu:local
     restart: unless-stopped
     # Loopback only: Juhandu has no sign-in yet. Put a reverse proxy that authenticates in front of it before publishing the port any wider.

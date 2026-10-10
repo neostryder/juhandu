@@ -1,9 +1,18 @@
 # Juhandu runs TypeScript directly on Node, has no runtime npm dependencies, and needs no build step.
 FROM node:26-alpine
 
-# yt-dlp and ffmpeg are only needed to read videos from captions, audio, and frames. Build with --build-arg VIDEO_TOOLS=true to include them.
-ARG VIDEO_TOOLS=false
-RUN if [ "$VIDEO_TOOLS" = "true" ]; then apk add --no-cache yt-dlp ffmpeg; fi
+# Video reading uses outside programs, and VIDEO_TOOLS picks which ones go into the image:
+#   captions (the default) adds yt-dlp, so a video's own captions can be read. It adds about 22 MB to the download.
+#   full also adds ffmpeg, so speech and frames can be read when a video has no captions. It adds about 125 MB.
+#   none adds neither, and only the Gemini way of reading videos works.
+# Sites change often and an old yt-dlp stops working, so rebuild the image with --no-cache now and then to update it.
+ARG VIDEO_TOOLS=captions
+RUN case "$VIDEO_TOOLS" in \
+      full|true) apk add --no-cache yt-dlp ffmpeg ;; \
+      captions) apk add --no-cache yt-dlp-core ;; \
+      none|false) ;; \
+      *) echo "VIDEO_TOOLS must be captions, full, or none" >&2; exit 1 ;; \
+    esac
 
 WORKDIR /app
 COPY package.json ./
