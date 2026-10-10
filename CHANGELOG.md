@@ -6,7 +6,20 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 
 ### Added
 
-- [Visible] **Juhandu can run in Docker with the included `Dockerfile` and `compose.yaml`.** The container runs as an unprivileged user, keeps the database and secrets in a data volume, reports its health from `/api/health`, and publishes the port on 127.0.0.1 only. Building with `VIDEO_TOOLS=true` adds yt-dlp and ffmpeg for reading videos.
+- [Visible] **Juhandu can run in Docker with the included `Dockerfile` and `compose.yaml`.** The container runs as an unprivileged user, keeps the database and secrets in a data volume, reports its health from `/api/health`, and publishes the port on 127.0.0.1 only. The image includes yt-dlp for reading video captions, and building with `VIDEO_TOOLS=full` adds ffmpeg as well.
+- [Visible] [UI] **The Connect screen sets up models and video reading, with a Test button for each.** Chat and embedding endpoints, Cogitator, the Gemini key, and the speech and vision servers can be saved without a restart. Keys go to the secret store, and an environment variable still wins over a saved value.
+- [Visible] [UI] **A Getting started list on the Briefing and Reading screens tracks the first steps.** It covers adding a feed, connecting a chat model, setting up video reading, and choosing where the briefing goes, links each step to its screen, and can be hidden.
+
+### Changed
+
+- [Visible] [UI] **The reasons a way of reading videos is off name the fix in plain words.** The Connect screen says when yt-dlp or ffmpeg is missing and how to add it, in Docker or on the host.
+- [Visible] [UI] **Small text on several screens is larger, and the light theme's dim accent and the pressed toolbar buttons meet WCAG AA contrast.**
+
+### Fixed
+
+- [Visible] [Security] **The MCP endpoint no longer treats a request through a proxy as local.** Without an access token, a request that carries a proxy header such as `X-Forwarded-For` or `Cf-Connecting-Ip`, or that is addressed to a name in `JUHANDU_PUBLIC_HOST`, is refused.
+- [Visible] **A Gemini key that Google reports as invalid pauses Gemini for an hour, as a refused key already did.** An invalid key used to be tried again on every video.
+- [Visible] [UI] **The AI assistants section describes what assistants can do with the switches as they are set.** It used to say assistants could only read, even when changes were switched on.
 
 ## [0.1.0] - 2026-10-09
 

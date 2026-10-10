@@ -1,10 +1,18 @@
 # Setting up Juhandu
 
-Juhandu reads its settings from environment variables, and every one is optional. A fresh clone runs with `npm start` and no settings at all: it listens on http://127.0.0.1:8787, keeps its data in the project's `data` folder, and leaves the AI features off until you connect a model.
+Every setting is optional. A fresh clone runs with `npm start` and no settings at all: it listens on http://127.0.0.1:8787, keeps its data in the project's `data` folder, and leaves the AI features off until you connect a model. Models and video reading can be set up on the Connect screen while Juhandu runs, and every setting can also come from an environment variable.
 
 ## Connecting models
 
-Juhandu picks a model adapter with `JUHANDU_LOCAL_AI`. Left at `auto`, it uses Cogitator when Cogitator is set up (see below), and otherwise uses the OpenAI-style endpoints named by `JUHANDU_EMBED_URL` and `JUHANDU_CHAT_URL`. With neither, AI features stay off and the rest of Juhandu works. The start-up log says which adapter it chose.
+### On the Connect screen
+
+The Models section of the Connect screen sets up the chat and embedding endpoints or Cogitator, and its Reading videos section sets up the Gemini key, the speech and vision servers, and which ways of reading are on. Each one has a Test button that sends one small request and says in plain words what went wrong. A saved change takes effect at once, with no restart.
+
+Keys go to the secret store, never to the database, and the screen only says whether a key is saved. Other values are kept in the database. An environment variable always wins over a value saved on the screen: a setting that comes from the environment is marked as set by the server and cannot be changed there, and each field names its variable underneath. Saving an address on this machine or on a private network asks you to confirm that the server there is yours.
+
+### With environment variables
+
+Juhandu picks a model adapter with `JUHANDU_LOCAL_AI`, which the Connect screen calls Where models come from. Left at `auto`, it uses Cogitator when Cogitator is set up (see below), and otherwise uses the OpenAI-style endpoints named by `JUHANDU_EMBED_URL` and `JUHANDU_CHAT_URL`. With neither, AI features stay off and the rest of Juhandu works. The start-up log says which adapter it chose.
 
 ### OpenAI-style endpoints
 
@@ -58,6 +66,8 @@ Juhandu has no sign-in yet, so anything beyond this machine should reach it only
 
 Programs that call the API directly follow the same rule, and a request with a body must send it with `Content-Type: application/json`, or it is refused with a 415.
 
+The MCP endpoint at `/mcp` is stricter about proxies. Without an access token, it answers only a request addressed to `localhost`, `127.0.0.1` or `[::1]` that carries no proxy header such as `Forwarded`, `X-Forwarded-For`, `X-Real-IP` or `Cf-Connecting-Ip`. A request through a proxy, or one addressed to a name in `JUHANDU_PUBLIC_HOST`, needs the token, which the Connect screen creates.
+
 ## Running in Docker
 
 The repository has a `Dockerfile` and a `compose.yaml`. From the project folder, this builds the image and starts Juhandu in the background on http://127.0.0.1:8787:
@@ -84,11 +94,13 @@ Inside the container the server listens on `0.0.0.0`, so the start-up warning ab
 
 From inside the container, `127.0.0.1` is the container itself, so a model server running on the Docker host is reached at `host.docker.internal`, for example `JUHANDU_CHAT_URL=http://host.docker.internal:8080/v1`. Docker Desktop provides that name. On Linux, add `extra_hosts: ["host.docker.internal:host-gateway"]` to the `juhandu` service in `compose.yaml`. Since `host.docker.internal` is not a loopback address, Juhandu treats that endpoint as off this machine and sends it no private items. To let private items through, set the endpoint's `_LOCAL` variable to `1`, such as `JUHANDU_CHAT_LOCAL=1`, or name the endpoint in `JUHANDU_PRIVATE_ALLOW`, such as `JUHANDU_PRIVATE_ALLOW=embeddings,chat`.
 
-Reading videos from captions, audio and frames needs yt-dlp and ffmpeg, which the image leaves out unless it is built with `VIDEO_TOOLS=true`. Without them, those steps are skipped with a note in the log. To build them in every time, replace the `build: .` line in `compose.yaml` with this one, then run `docker compose up -d --build`:
+The image includes yt-dlp, which is enough to read a video's own captions. Reading a video that has no captions also needs ffmpeg, which adds about 125 MB to the image, so it is left out unless the image is built with `VIDEO_TOOLS=full`. The build argument takes `captions`, the default, which adds yt-dlp alone at about 22 MB; `full`, which adds both; and `none`, which leaves only Gemini. To build with ffmpeg, put `VIDEO_TOOLS=full` in `.env` and run `docker compose up -d --build`, or build once with this command and then run `docker compose up -d`:
 
 ```
-    build: { context: ., args: { VIDEO_TOOLS: "true" } }
+docker compose build --build-arg VIDEO_TOOLS=full
 ```
+
+yt-dlp has to keep up with changes on YouTube, so rebuild the image with `docker compose build --no-cache` now and then to update it. The Reading videos section of the Connect screen says when yt-dlp or ffmpeg is missing and how to add it.
 
 To reach Juhandu from other machines, put a reverse proxy that authenticates every request in front of it, as described above, and set `JUHANDU_PUBLIC_HOST` in `.env` to the proxy's public name. Compose passes it to the container. A proxy on the same host forwards to `127.0.0.1:8787`. Change the `ports` line in `compose.yaml` to publish beyond 127.0.0.1 only for a proxy that cannot reach that address, such as one on another machine.
 
@@ -119,7 +131,7 @@ Server and briefing:
 | `JUHANDU_DATA` | `data` in the project | The folder for the database and the `secrets` folder. |
 | `JUHANDU_BRIEFING_HOUR` | `7` | The hour, in server local time, after which the daily briefing is built. |
 | `JUHANDU_MERGE_SIMILARITY` | `0.8` | How similar two items must be before the judge is asked whether they are the same story. |
-| `JUHANDU_PUBLIC_HOST` | none | Comma-separated host names, besides this machine's own, that the web app, the API and the MCP endpoint answer to. Set it to the public name when Juhandu runs behind a reverse proxy; without it, every API request through that name is refused. |
+| `JUHANDU_PUBLIC_HOST` | none | Comma-separated host names, besides this machine's own, that the web app and the API answer to. Set it to the public name when Juhandu runs behind a reverse proxy; without it, every API request through that name is refused. |
 | `JUHANDU_PRIVATE_ALLOW` | none | Comma-separated endpoint names that may receive private items. |
 
 Model adapter and embeddings:
@@ -191,7 +203,7 @@ API keys, feed logins, notification passwords and the MCP token live in a secret
 
 New secrets are written to the credential store, or to the folder when there is no credential store. The `env` and `bws` backends are read only.
 
-To hand a secret in as an environment variable, take its name, uppercase it, turn every character other than a letter or digit into `_`, and put `JUHANDU_SECRET_` in front. The secret `notify.telegram.token` becomes `JUHANDU_SECRET_NOTIFY_TELEGRAM_TOKEN`. The names in use are `cogitator/interactive`, `cogitator/background`, `embed/key`, `chat/key`, `jev/key`, `gemini_api_key`, `notify.email.password`, `notify.telegram.token`, `notify.discord.webhook`, `mcp.token`, and `source/<id>` for each feed login. A key set directly in its own environment variable, such as `JUHANDU_CHAT_KEY`, wins over the stored secret.
+To hand a secret in as an environment variable, take its name, uppercase it, turn every character other than a letter or digit into `_`, and put `JUHANDU_SECRET_` in front. The secret `notify.telegram.token` becomes `JUHANDU_SECRET_NOTIFY_TELEGRAM_TOKEN`. The names in use are `cogitator/interactive`, `cogitator/background`, `embed/key`, `chat/key`, `transcribe/key`, `vision/key`, `jev/key`, `gemini_api_key`, `notify.email.password`, `notify.telegram.token`, `notify.discord.webhook`, `mcp.token`, and `source/<id>` for each feed login. A key set directly in its own environment variable, such as `JUHANDU_CHAT_KEY`, wins over the stored secret.
 
 ## Command-line tools
 

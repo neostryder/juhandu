@@ -54,11 +54,11 @@ The Connect screen sends the daily briefing by email, Telegram or Discord. Email
 
 ### AI assistants
 
-Juhandu has an MCP server so an AI assistant can read your briefing, items, feeds, rules and pipes. It answers at `/mcp` over HTTP, and `node src/mcp/stdio.ts` bridges it to assistants that speak MCP over standard input and output. The Connect screen can create an access token, which is shown once; once a token exists, every request must carry it. Without a token, the endpoint answers only requests addressed to this machine or to a host name listed in `JUHANDU_PUBLIC_HOST`, the same list the whole server answers to. Letting assistants vote, mark items read or build a briefing is off by default, and so is letting them see private feeds.
+Juhandu has an MCP server so an AI assistant can read your briefing, items, feeds, rules and pipes. It answers at `/mcp` over HTTP, and `node src/mcp/stdio.ts` bridges it to assistants that speak MCP over standard input and output. The Connect screen can create an access token, which is shown once; once a token exists, every request must carry it. Without a token, the endpoint answers only programs on this machine, so a request through a proxy or one addressed to a name in `JUHANDU_PUBLIC_HOST` needs the token. Letting assistants vote, mark items read or build a briefing is off by default, and so is letting them see private feeds.
 
 ### Videos
 
-For a single YouTube video, Juhandu reads the video before summarizing it, trying three ways in order. Gemini can read a public video from its address with your Google API key. The video's captions can be fetched with yt-dlp and digested by your chat model. Juhandu can also pull the audio and a few frames itself with yt-dlp and ffmpeg and send them to a speech server and a vision server you configure; this way skips videos over an hour long. The Connect screen shows which ways are set up and why the others are off.
+For a single YouTube video, Juhandu reads the video before summarizing it, trying three ways in order. Gemini can read a public video from its address with your Google API key. The video's captions can be fetched with yt-dlp and digested by your chat model. Juhandu can also pull the audio and a few frames itself with yt-dlp and ffmpeg and send them to a speech server and a vision server you configure; this way skips videos over an hour long. The Connect screen sets up each way, tests it, and says why any of them is off.
 
 ### Teaching your own judge
 
@@ -84,6 +84,8 @@ npm start
 
 Open http://127.0.0.1:8787 and add a feed from the Reading screen. Data goes in a `data` folder in the project unless `JUHANDU_DATA` names another one. `npm install` is needed only for the type checker.
 
+Until its steps are done or it is hidden, a short Getting started list on the Briefing and Reading screens covers the first steps: add a feed, connect a chat model, set up video reading, and choose where the briefing goes. Each step links to the place that does it.
+
 Juhandu also runs in Docker. From the project folder, this builds the image and starts it on http://127.0.0.1:8787:
 
 ```
@@ -94,11 +96,11 @@ docker compose up -d --build
 
 ## Connecting models
 
-Settings are environment variables. To turn on the AI features, point `JUHANDU_EMBED_URL` and `JUHANDU_CHAT_URL` at any OpenAI-style embedding and chat endpoints, such as a model server running on this machine. The start-up log says which model adapter Juhandu chose, or that AI features are off. [docs/SETUP.md](docs/SETUP.md) lists every setting, explains the judges and the optional integrations, and covers secrets and the command-line tools.
+The Connect screen connects models while Juhandu runs: it saves each key in the secret store, tests the connection, and applies the change without a restart. Environment variables work too, and they win over anything saved on the screen. To turn on the AI features that way, point `JUHANDU_EMBED_URL` and `JUHANDU_CHAT_URL` at any OpenAI-style embedding and chat endpoints, such as a model server running on this machine. The start-up log says which model adapter Juhandu chose, or that AI features are off. [docs/SETUP.md](docs/SETUP.md) lists every setting, explains the judges and the optional integrations, and covers secrets and the command-line tools.
 
 ## Privacy
 
-Every feed is public or private. Public items may go to any model endpoint you configure. Private items go only to endpoints on this machine and to endpoints you name in `JUHANDU_PRIVATE_ALLOW`. An endpoint counts as on this machine when its address is a loopback address, unless its `_LOCAL` variable says otherwise. Cogitator and typed-decision servers are always treated as local, so point them only at machines you control. Gemini only ever sees public videos, and Telegram and Discord never receive private items.
+Every feed is public or private. Public items may go to any model endpoint you configure. Private items go only to endpoints on this machine and to endpoints you name in `JUHANDU_PRIVATE_ALLOW`. An endpoint counts as on this machine when its address is a loopback address, unless its `_LOCAL` variable or its switch on the Connect screen says otherwise. Cogitator and typed-decision servers are always treated as local, so point them only at machines you control. Gemini only ever sees public videos, and Telegram and Discord never receive private items.
 
 The server contacts the feeds you subscribe to, YouTube when you add a channel or playlist, and the services you configure. The web page loads two fonts from Google Fonts, so your browser contacts fonts.googleapis.com and fonts.gstatic.com; without them the app falls back to fonts already on your device.
 
