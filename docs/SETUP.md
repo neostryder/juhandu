@@ -68,6 +68,8 @@ Programs that call the API directly follow the same rule, and a request with a b
 
 The MCP endpoint at `/mcp` is stricter about proxies. Without an access token, it answers only a request addressed to `localhost`, `127.0.0.1` or `[::1]` that carries no proxy header such as `Forwarded`, `X-Forwarded-For`, `X-Real-IP` or `Cf-Connecting-Ip`. A request through a proxy, or one addressed to a name in `JUHANDU_PUBLIC_HOST`, needs the token, which the Connect screen creates.
 
+A proxy or CDN in front of Juhandu may cache its files, and an upgrade still reaches the browser on the first load. The page is sent with `Cache-Control: no-cache`, so it is checked with the server every time, and every script and stylesheet address in it ends in `?v=` and a fingerprint of the app's files. A new release changes the fingerprint, so the browser asks for new addresses and nothing old is served from any cache. Files fetched under the current fingerprint may be kept for a year. A cache in front of Juhandu has to include the query string in its cache key, which Cloudflare's default Standard caching level does.
+
 ## Running in Docker
 
 The repository has a `Dockerfile` and a `compose.yaml`. From the project folder, this builds the image and starts Juhandu in the background on http://127.0.0.1:8787:

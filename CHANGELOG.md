@@ -17,6 +17,7 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 
 ### Fixed
 
+- [Visible] **A new release shows up on the first load, even behind a caching proxy.** Script and stylesheet addresses carry a fingerprint of the app's files, the page is checked with the server on every load, and the offline copy is rebuilt for each release.
 - [Visible] [Security] **The MCP endpoint no longer treats a request through a proxy as local.** Without an access token, a request that carries a proxy header such as `X-Forwarded-For` or `Cf-Connecting-Ip`, or that is addressed to a name in `JUHANDU_PUBLIC_HOST`, is refused.
 - [Visible] **A Gemini key that Google reports as invalid pauses Gemini for an hour, as a refused key already did.** An invalid key used to be tried again on every video.
 - [Visible] [UI] **The AI assistants section describes what assistants can do with the switches as they are set.** It used to say assistants could only read, even when changes were switched on.

@@ -14,7 +14,8 @@ initSettings();
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => {
+    // The version in the address makes a new release register a new worker, even where a cache holds the old one.
+    navigator.serviceWorker.register("/sw.js?v=__JUHANDU_VERSION__").catch(() => {
       // No offline copy, but everything else works.
     });
   });

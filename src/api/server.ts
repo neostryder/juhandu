@@ -1,7 +1,6 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
-import { readFile } from "node:fs/promises";
-import { extname, join, normalize, resolve, sep } from "node:path";
+import { WebAssets } from "./assets.ts";
 import type { Ingestor } from "../ingest/ingest.ts";
 import { toNewItem } from "../ingest/ingest.ts";
 import type { FetchLike } from "../sources/fetcher.ts";
@@ -244,25 +243,19 @@ function intParam(value: string | null, fallback?: number): number | undefined {
   return n;
 }
 
-async function serveStatic(res: ServerResponse, webRoot: string, pathname: string): Promise<boolean> {
-  const root = resolve(webRoot);
-  const relative = pathname === "/" ? "index.html" : normalize(decodeURIComponent(pathname)).replace(/^[/\\]+/, "");
-  const full = resolve(join(root, relative));
-  if (full !== root && !full.startsWith(root + sep)) return false;
-  try {
-    const data = await readFile(full);
-    res.writeHead(200, { ...SECURITY_HEADERS, "content-type": TYPES[extname(full)] ?? "application/octet-stream", "cache-control": "no-cache" });
-    res.end(data);
-    return true;
-  } catch {
-    return false;
-  }
+async function serveStatic(res: ServerResponse, assets: WebAssets, pathname: string, asked: string | null): Promise<boolean> {
+  const file = await assets.read(pathname, asked);
+  if (!file) return false;
+  res.writeHead(200, { ...SECURITY_HEADERS, "content-type": TYPES[file.ext] ?? "application/octet-stream", "cache-control": file.cacheControl });
+  res.end(file.data);
+  return true;
 }
 
 export function createApp(deps: AppDeps): Server {
   const { store, ingestor } = deps;
   const briefer = deps.briefer ?? new Briefer(store);
   const pipes = deps.pipes ?? new PipeEngine({ store });
+  const assets = new WebAssets(deps.webRoot);
   const pipeJson = (p: StoredPipe) => ({ id: p.id, slug: p.slug, name: p.name, doc: p.doc, tier: pipes.tierOf(p.doc), usedBy: pipes.usedBy(p.id), feedPath: p.doc.output.publish ? `/pipes/${p.slug}.xml` : null, updatedAt: p.updatedAt });
   const readPipeBody = (body: Record<string, unknown>, partial: boolean) => {
     const name = typeof body["name"] === "string" ? body["name"].trim().slice(0, 80) : undefined;
@@ -766,7 +759,7 @@ export function createApp(deps: AppDeps): Server {
       throw new HttpError(404, "Not found");
     }
 
-    if ((method === "GET" || method === "HEAD") && (await serveStatic(res, deps.webRoot, path))) return;
+    if ((method === "GET" || method === "HEAD") && (await serveStatic(res, assets, path, url.searchParams.get("v")))) return;
     throw new HttpError(404, "Not found");
   }
 
