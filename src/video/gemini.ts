@@ -54,6 +54,8 @@ export class GeminiUrlRung implements VideoRung {
   private readonly clock: () => number;
   private models: { at: number; names: string[] } | null = null;
   private pausedUntil = 0;
+  /** The key Google refused. Saving a different key ends the pause at once. */
+  private pausedKey = "";
 
   constructor(options: GeminiOptions) {
     this.secrets = options.secrets;
@@ -73,9 +75,11 @@ export class GeminiUrlRung implements VideoRung {
   }
 
   async unavailable(): Promise<string | null> {
-    if (this.env["JUHANDU_GEMINI"] === "off") return "Switched off (JUHANDU_GEMINI=off)";
-    if (this.clock() < this.pausedUntil) return "Paused for an hour after Google refused the key";
-    return (await this.key()) ? null : "No Gemini key is stored (set JUHANDU_GEMINI_KEY or the secret gemini_api_key)";
+    if (this.env["JUHANDU_GEMINI"] === "off") return "Switched off.";
+    const key = await this.key();
+    if (!key) return "No Gemini key is saved yet.";
+    if (this.clock() < this.pausedUntil && key === this.pausedKey) return "Paused for an hour because Google refused the key. Saving a new key ends the pause.";
+    return null;
   }
 
   /** The Flash models the key can use, newest first. The list is asked for once every few hours; if Google cannot be asked, the last known releases are used. */
@@ -119,6 +123,7 @@ export class GeminiUrlRung implements VideoRung {
       }
       if (response.status === 401 || response.status === 403) {
         this.pausedUntil = this.clock() + KEY_COOLDOWN_MS;
+        this.pausedKey = key;
         throw new RungSkipped(`Google refused the key (${response.status})`);
       }
       if (response.status === 404 || response.status === 429 || response.status >= 500) {

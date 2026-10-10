@@ -49,6 +49,8 @@ export interface SecretStatus {
 export class SecretStore {
   private readonly backends: SecretBackend[];
   private readonly cache = new Map<string, string | undefined>();
+  /** Which backend each cached value came from, so a screen can tell a value it may replace from one the server hands in. */
+  private readonly origins = new Map<string, string>();
   private readonly redact_: Redactor;
   private usable: Map<string, boolean> | null = null;
 
@@ -78,6 +80,7 @@ export class SecretStore {
       if (value !== undefined && value !== "") {
         this.redact_.add(value);
         this.cache.set(name, value);
+        this.origins.set(name, backend.id);
         return value;
       }
     }
@@ -98,6 +101,14 @@ export class SecretStore {
     return (await this.get(name)) !== undefined;
   }
 
+  /** Where a secret's value comes from: the backend's id and whether that backend can be written. Undefined when the secret is not set. */
+  async origin(name: string): Promise<{ id: string; writable: boolean } | undefined> {
+    if ((await this.get(name)) === undefined) return undefined;
+    const id = this.origins.get(name);
+    const backend = this.backends.find((b) => b.id === id);
+    return backend ? { id: backend.id, writable: backend.writable } : undefined;
+  }
+
   /** Stores a secret in the first writable backend that takes it, then removes older copies from the other writable ones so a stale value cannot shadow it. Returns the backend id. */
   async set(name: string, value: string): Promise<string> {
     assertSecretName(name);
@@ -116,6 +127,7 @@ export class SecretStore {
       for (const other of writable) if (other !== backend) await safe(() => other.delete(name), undefined);
       this.redact_.add(value);
       this.cache.set(name, value);
+      this.origins.set(name, backend.id);
       return backend.id;
     }
     throw new Error(`Could not store the secret: ${this.redact_.apply(lastError instanceof Error ? lastError.message : String(lastError))}`);
@@ -124,6 +136,7 @@ export class SecretStore {
   async delete(name: string): Promise<void> {
     assertSecretName(name);
     this.cache.delete(name);
+    this.origins.delete(name);
     for (const backend of (await this.usableBackends()).filter((b) => b.writable)) await safe(() => backend.delete(name), undefined);
   }
 

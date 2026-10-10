@@ -104,9 +104,9 @@ export class AppSideRung implements VideoRung {
   }
 
   async unavailable(): Promise<string | null> {
-    if (!this.endpoints.transcribe && !this.endpoints.vision) return "No speech or vision server is set (JUHANDU_TRANSCRIBE_URL, JUHANDU_VISION_URL)";
-    if (!(await this.finder.find("yt-dlp", this.env["JUHANDU_YTDLP"]))) return "yt-dlp is not installed";
-    if (!(await this.finder.find("ffmpeg", this.env["JUHANDU_FFMPEG"], "-version"))) return "ffmpeg is not installed";
+    if (!this.endpoints.transcribe && !this.endpoints.vision) return "No speech or vision server is set up yet.";
+    if (!(await this.finder.find("yt-dlp", this.env["JUHANDU_YTDLP"]))) return "yt-dlp is not installed on the server.";
+    if (!(await this.finder.find("ffmpeg", this.env["JUHANDU_FFMPEG"], "-version"))) return "ffmpeg is not installed on the server.";
     return null;
   }
 

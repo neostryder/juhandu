@@ -34,6 +34,9 @@ import type { ChannelId, Notifier } from "../notify/notifier.ts";
 import { McpServer } from "../mcp/server.ts";
 import { MIN_HUMAN_TEST, MIN_HUMAN_TRAIN, buildTrainingExport, parseLanes, toJsonl } from "../training/export.ts";
 import type { McpAccess } from "../mcp/access.ts";
+import { cameThroughProxy } from "../mcp/access.ts";
+import type { AppSettings } from "../settings/settings.ts";
+import { SettingsError } from "../settings/settings.ts";
 
 export interface AppDeps {
   store: Store;
@@ -58,6 +61,8 @@ export interface AppDeps {
   notifier?: Notifier;
   /** The MCP door for AI assistants. Without it, /mcp answers 404. */
   mcp?: McpAccess;
+  /** The Connect screen's model and video settings. Without it, those settings can only be changed through the environment. */
+  settings?: AppSettings;
   /** Host names the server answers on besides this machine's own (JUHANDU_PUBLIC_HOST), for a reverse proxy with a public name. */
   publicHosts?: string[];
   fetchImpl?: FetchLike;
@@ -317,7 +322,7 @@ export function createApp(deps: AppDeps): Server {
 
     if (path === "/mcp") {
       if (!deps.mcp || !mcpServer) throw new HttpError(404, "Not found");
-      if (!(await deps.mcp.allows({ authorization: req.headers.authorization, host: req.headers.host, origin: req.headers.origin }))) throw new HttpError(403, "Not allowed");
+      if (!(await deps.mcp.allows({ authorization: req.headers.authorization, host: req.headers.host, origin: req.headers.origin, proxied: cameThroughProxy(req.headers) }))) throw new HttpError(403, "Not allowed");
       if (method !== "POST") {
         res.writeHead(405, { ...SECURITY_HEADERS, allow: "POST", "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify({ error: "Use POST" }));
@@ -369,7 +374,7 @@ export function createApp(deps: AppDeps): Server {
       }
       if (path === "/api/mcp" && method === "GET") {
         if (!deps.mcp) return send(res, 200, { available: false });
-        return send(res, 200, { available: true, ...(await deps.mcp.status()) });
+        return send(res, 200, { available: true, ...(await deps.mcp.status()), proxied: cameThroughProxy(req.headers) });
       }
       if (path === "/api/mcp" && method === "PUT") {
         if (!deps.mcp) throw new HttpError(503, "The assistant door is not set up");
@@ -386,7 +391,46 @@ export function createApp(deps: AppDeps): Server {
             throw new HttpError(503, error instanceof Error ? error.message : "A token could not be made");
           }
         } else if (body["token"] === null) await deps.mcp.clearToken();
-        return send(res, 200, { available: true, ...(await deps.mcp.status()), ...(token ? { token } : {}) });
+        return send(res, 200, { available: true, ...(await deps.mcp.status()), proxied: cameThroughProxy(req.headers), ...(token ? { token } : {}) });
+      }
+      if (path === "/api/settings" && method === "GET") {
+        if (!deps.settings) throw new HttpError(503, "Settings are not available");
+        return send(res, 200, await deps.settings.status());
+      }
+      const settingsMatch = path.match(/^\/api\/settings\/(?:endpoints\/([a-z]+)|(host)|(video))(\/test|\/gemini\/test)?$/);
+      if (settingsMatch && (method === "PUT" || method === "POST")) {
+        if (!deps.settings) throw new HttpError(503, "Settings are not available");
+        const settings = deps.settings;
+        const [, endpointId, host, video, test] = settingsMatch;
+        if (method === "PUT" && !test) {
+          const body = await readJson(req);
+          if (endpointId) await settings.saveEndpoint(endpointId, body);
+          else if (host) await settings.saveHost(body);
+          else await settings.saveVideo(body);
+          return send(res, 200, await settings.status());
+        }
+        if (method === "POST" && endpointId && test === "/test") return send(res, 200, await settings.testEndpoint(endpointId));
+        if (method === "POST" && host && test === "/test") return send(res, 200, await settings.testCogitator());
+        if (method === "POST" && video && test === "/gemini/test") return send(res, 200, await settings.testGemini());
+      }
+      if (path === "/api/setup" && method === "GET") {
+        const rungs = deps.videoReader ? await deps.videoReader.status() : [];
+        const channels = deps.notifier ? await deps.notifier.status() : [];
+        return send(res, 200, {
+          dismissed: store.getMeta("setup:dismissed") === "1",
+          steps: {
+            feed: store.listSources().length > 0,
+            model: Boolean(deps.summarizer),
+            video: rungs.some((r) => r.ready),
+            delivery: channels.some((c) => c.ready),
+          },
+        });
+      }
+      if (path === "/api/setup" && method === "PUT") {
+        const body = await readJson(req);
+        if (typeof body["dismissed"] !== "boolean") throw new HttpError(400, "dismissed must be true or false");
+        store.setMeta("setup:dismissed", body["dismissed"] ? "1" : "0");
+        return send(res, 200, { dismissed: body["dismissed"] });
       }
       if (method === "GET" && path === "/api/video") {
         const summary = store.videoSummary();
@@ -725,6 +769,7 @@ export function createApp(deps: AppDeps): Server {
         return;
       }
       if (error instanceof HttpError) return send(res, error.status, { error: error.message });
+      if (error instanceof SettingsError) return send(res, error.status, { error: error.message, ...(error.code ? { code: error.code } : {}), ...(error.place ? { place: error.place } : {}) });
       if (error instanceof NoEndpointError) return send(res, 503, { error: "No model is available right now" });
       console.error("Unhandled request error:", error);
       send(res, 500, { error: "Internal error" });

@@ -147,11 +147,11 @@ test("tool answers carry the untrusted-text note and keep feed text short", asyn
 
 // ---- the HTTP door ----
 
-async function serve(withToken: boolean) {
+async function serve(withToken: boolean, publicHosts: string[] = []) {
   const store = new Store(":memory:");
   const secrets = new SecretStore([new MemBackend()]);
   const mcp = new McpAccess({ store, secrets });
-  const app = createApp({ store, ingestor: new Ingestor(store), secrets, mcp, webRoot: ".", version: "test" });
+  const app = createApp({ store, ingestor: new Ingestor(store), secrets, mcp, publicHosts, webRoot: ".", version: "test" });
   await new Promise<void>((resolve) => app.listen(0, "127.0.0.1", resolve));
   const port = (app.address() as AddressInfo).port;
   let token: string | undefined;
@@ -184,6 +184,42 @@ test("the /mcp door answers this machine, refuses other hosts and web pages, and
     assert.equal((await s.call("GET", "/mcp", {})).status, 405);
     assert.equal((await s.call("POST", "/mcp", {}, { jsonrpc: "2.0", method: "notifications/initialized" })).status, 202);
     assert.equal((await s.call("POST", "/mcp", {}, "{")).status, 400);
+  } finally {
+    await s.close();
+    s.store.close();
+  }
+});
+
+test("without a token, a request through a proxy or on the public name never counts as this machine", async () => {
+  const s = await serve(false, ["reader.example.com"]);
+  try {
+    assert.equal((await s.call("POST", "/mcp", {}, PING)).status, 200, "a direct local request still works");
+    assert.equal((await s.call("POST", "/mcp", { host: "reader.example.com" }, PING)).status, 403, "the public name is not this machine");
+    for (const [name, value] of [
+      ["x-forwarded-for", "203.0.113.9"],
+      ["cf-connecting-ip", "203.0.113.9"],
+      ["forwarded", "for=203.0.113.9"],
+      ["x-real-ip", "203.0.113.9"],
+      ["cf-access-jwt-assertion", "x.y.z"],
+      ["via", "1.1 proxy"],
+    ] as const) {
+      assert.equal((await s.call("POST", "/mcp", { [name]: value }, PING)).status, 403, `${name} with a loopback Host is refused`);
+      assert.equal((await s.call("POST", "/mcp", { [name]: value, host: "127.0.0.1" }, PING)).status, 403, `${name} with a rewritten Host is refused`);
+    }
+    const status = JSON.parse((await s.call("GET", "/api/mcp", { "cf-connecting-ip": "203.0.113.9", host: "reader.example.com" })).text) as { proxied: boolean };
+    assert.equal(status.proxied, true, "the settings screen learns that it is being reached through a proxy");
+    assert.equal((JSON.parse((await s.call("GET", "/api/mcp", {})).text) as { proxied: boolean }).proxied, false);
+  } finally {
+    await s.close();
+    s.store.close();
+  }
+});
+
+test("with a token set, a proxied request with the token is answered", async () => {
+  const s = await serve(true, ["reader.example.com"]);
+  try {
+    assert.equal((await s.call("POST", "/mcp", { host: "reader.example.com", "cf-connecting-ip": "203.0.113.9" }, PING)).status, 403);
+    assert.equal((await s.call("POST", "/mcp", { host: "reader.example.com", "cf-connecting-ip": "203.0.113.9", authorization: `Bearer ${s.token}` }, PING)).status, 200);
   } finally {
     await s.close();
     s.store.close();

@@ -41,7 +41,7 @@ export class CaptionsRung implements VideoRung {
   }
 
   async unavailable(): Promise<string | null> {
-    return (await this.finder.find("yt-dlp", this.env["JUHANDU_YTDLP"])) ? null : "yt-dlp is not installed (install it, or set JUHANDU_YTDLP to its path)";
+    return (await this.finder.find("yt-dlp", this.env["JUHANDU_YTDLP"])) ? null : "yt-dlp is not installed on the server.";
   }
 
   async read(target: VideoTarget): Promise<VideoReading> {

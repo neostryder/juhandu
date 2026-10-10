@@ -137,11 +137,16 @@ function escapeRegex(text: string): string {
 
 export class PipeEngine {
   private readonly store: Store;
-  private readonly judge: Judge | null;
+  private judge: Judge | null;
 
   constructor(deps: { store: Store; judge?: Judge | null }) {
     this.store = deps.store;
     this.judge = deps.judge ?? null;
+  }
+
+  /** Swaps the model behind AI questions, for when the owner connects or changes a chat model while the server runs. */
+  setJudge(judge: Judge | null): void {
+    this.judge = judge;
   }
 
   /** Works out a pipe's output. Throws when the pipe reads itself through other pipes. */

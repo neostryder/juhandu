@@ -8,6 +8,8 @@ const KEY_SECRETS: { name: string; variable: string; unlessSet: string[] }[] = [
   { name: "jev/key", variable: "JUHANDU_JEV_KEY", unlessSet: ["JUHANDU_JEV_KEY", "TYPESAFE_API_KEY", "JEV_API_KEY", "JUHANDU_JEV_KEY_FILE"] },
   { name: "chat/key", variable: "JUHANDU_CHAT_KEY", unlessSet: ["JUHANDU_CHAT_KEY"] },
   { name: "embed/key", variable: "JUHANDU_EMBED_KEY", unlessSet: ["JUHANDU_EMBED_KEY"] },
+  { name: "transcribe/key", variable: "JUHANDU_TRANSCRIBE_KEY", unlessSet: ["JUHANDU_TRANSCRIBE_KEY"] },
+  { name: "vision/key", variable: "JUHANDU_VISION_KEY", unlessSet: ["JUHANDU_VISION_KEY"] },
 ];
 
 /** A copy of the environment with the stored model keys filled in. A key set in the environment or a key file always wins, so old setups keep working. */

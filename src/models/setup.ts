@@ -13,7 +13,8 @@ import type { ModelProvider } from "./provider.ts";
 
 type Env = Record<string, string | undefined>;
 
-function isLoopback(url: string): boolean {
+/** The default for an endpoint's _LOCAL setting: an address that names this machine counts as local. */
+export function isLoopback(url: string): boolean {
   const host = new URL(url).hostname;
   return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1";
 }
@@ -32,14 +33,27 @@ export function defaultDiscoveryFile(env: Env): string | undefined {
   return base ? join(base, "Cogitator", "data", "discovery.json") : undefined;
 }
 
+/** True when Cogitator's discovery file is on this machine or its address is set. */
+export function cogitatorPresent(env: Env): boolean {
+  const discoveryFile = env["JUHANDU_COGITATOR_DISCOVERY"] ?? defaultDiscoveryFile(env);
+  return Boolean(env["JUHANDU_COGITATOR_URL"]) || Boolean(discoveryFile && existsSync(discoveryFile));
+}
+
+/** The adapter buildProvider picks for this environment. */
+export function chooseAdapter(env: Env): "cogitator" | "openai" | "off" {
+  const choice = env["JUHANDU_LOCAL_AI"] ?? "auto";
+  if (choice === "off") return "off";
+  if (choice === "cogitator" || (choice === "auto" && cogitatorPresent(env))) return "cogitator";
+  return env["JUHANDU_EMBED_URL"] || env["JUHANDU_CHAT_URL"] ? "openai" : "off";
+}
+
 /** Picks the local AI adapter. JUHANDU_LOCAL_AI=cogitator|openai|off; unset means Cogitator when it is installed here, else a plain OpenAI-style endpoint when one is configured, else off. */
 export function buildProvider(env: Env, dataDir: string, secrets?: SecretStore): ModelProvider | null {
-  const choice = env["JUHANDU_LOCAL_AI"] ?? "auto";
-  if (choice === "off") return null;
+  const adapter = chooseAdapter(env);
+  if (adapter === "off") return null;
   const discoveryFile = env["JUHANDU_COGITATOR_DISCOVERY"] ?? defaultDiscoveryFile(env);
   const gatewayUrl = env["JUHANDU_COGITATOR_URL"];
-  const cogitatorPresent = Boolean(gatewayUrl) || Boolean(discoveryFile && existsSync(discoveryFile));
-  if (choice === "cogitator" || (choice === "auto" && cogitatorPresent)) {
+  if (adapter === "cogitator") {
     const folder = join(dataDir, "secrets");
     const store = secrets;
     // A key file named in the environment wins; otherwise the SecretStore (which also reads the older data/secrets key files), otherwise the files directly.
