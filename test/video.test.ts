@@ -145,6 +145,9 @@ test("the Gemini rung reads by address, moves past a busy model, and pauses when
   assert.match((await rung.unavailable()) ?? "", /Paused/);
   now += 3_700_000;
   assert.equal(await rung.unavailable(), null, "the pause ends after an hour");
+  const invalid = new GeminiUrlRung({ secrets: secretsWith({ gemini_api_key: "k-bad" }), env: {}, clock: () => now, fetchImpl: async (url: string) => (url.includes("/models?") ? Response.json({ models: [] }) : Response.json({ error: { status: "INVALID_ARGUMENT", details: [{ reason: "API_KEY_INVALID" }] } }, { status: 400 })) });
+  await assert.rejects(invalid.read(TARGET), RungSkipped, "a key Google calls invalid is refused, not counted against the video");
+  assert.match((await invalid.unavailable()) ?? "", /Paused/);
   assert.match((await new GeminiUrlRung({ secrets: secretsWith({}), env: {}, fetchImpl }).unavailable()) ?? "", /No Gemini key/);
   assert.equal(await new GeminiUrlRung({ secrets: secretsWith({}), env: { JUHANDU_GEMINI_KEY: "k-123456" }, fetchImpl }).unavailable(), null, "the environment names a key too");
 });

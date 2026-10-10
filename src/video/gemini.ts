@@ -121,7 +121,9 @@ export class GeminiUrlRung implements VideoRung {
         failures.push(`${model}: ${(error as Error).message}`);
         continue;
       }
-      if (response.status === 401 || response.status === 403) {
+      // A key that is not valid at all comes back as a 400 that names API_KEY_INVALID, and is as refused as a 401 or 403.
+      const detail = response.status === 400 ? await response.text() : "";
+      if (response.status === 401 || response.status === 403 || detail.includes("API_KEY_INVALID")) {
         this.pausedUntil = this.clock() + KEY_COOLDOWN_MS;
         this.pausedKey = key;
         throw new RungSkipped(`Google refused the key (${response.status})`);
@@ -130,7 +132,7 @@ export class GeminiUrlRung implements VideoRung {
         failures.push(`${model}: ${response.status}`);
         continue;
       }
-      if (!response.ok) throw new RungFailed(`Gemini rejected the video (${response.status}): ${(await response.text()).slice(0, 200).replace(/\s+/g, " ")}`);
+      if (!response.ok) throw new RungFailed(`Gemini rejected the video (${response.status}): ${(detail || (await response.text())).slice(0, 200).replace(/\s+/g, " ")}`);
       const body = (await response.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
       const text = (body.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("").replace(/[*_`#]+/g, "").trim();
       if (!text) {
