@@ -77,6 +77,25 @@ function generic(fetchImpl: FetchLike): OpenAICompatibleProvider {
   return new OpenAICompatibleProvider({ embedPool: new EndpointPool([endpoint("embed")], gate), chatPool: new EndpointPool([endpoint("chat")], gate), embedTag: "any-embed-q8", fetchImpl });
 }
 
+test("a gateway that advertises its loopback address is called at the address the client reached it on", async () => {
+  const hosts: string[] = [];
+  const inner = fakeHost([], { discovery: { ...DISCOVERY, openai_base: "http://127.0.0.1:8470/v1" } });
+  const provider = cogitator(async (url, init) => {
+    hosts.push(new URL(url).origin);
+    return inner(url, init);
+  }, { gatewayUrl: "http://192.168.2.100:8470" });
+  const result = await provider.embed({ tier: "public", priority: "background", texts: ["a"] });
+  assert.equal(result.vectors.length, 1);
+  assert.deepEqual([...new Set(hosts)], ["http://192.168.2.100:8470"]);
+  const local = cogitator(async (url, init) => {
+    hosts.push(new URL(url).origin);
+    return inner(url, init);
+  }, { gatewayUrl: "http://127.0.0.1:8470" });
+  hosts.length = 0;
+  await local.embed({ tier: "public", priority: "background", texts: ["a"] });
+  assert.deepEqual([...new Set(hosts)], ["http://127.0.0.1:8470"]);
+});
+
 test("the Cogitator adapter asks for a role by job name and picks the key class by priority", async () => {
   const calls: Call[] = [];
   const provider = cogitator(fakeHost(calls));

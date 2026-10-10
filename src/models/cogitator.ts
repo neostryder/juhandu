@@ -63,6 +63,22 @@ async function errorCode(response: Response): Promise<string> {
   }
 }
 
+/** A gateway describes itself as 127.0.0.1, which is right on its own machine and wrong from any other; a client that reached it elsewhere keeps the address it used. */
+function reachableBase(doc: Discovery, gatewayUrl: string): Discovery {
+  if (doc.schema !== 1 || typeof doc.openai_base !== "string") return doc;
+  try {
+    const advertised = new URL(doc.openai_base);
+    const reached = new URL(gatewayUrl);
+    const loopback = (host: string) => host === "127.0.0.1" || host === "localhost" || host === "[::1]";
+    if (loopback(advertised.hostname) && !loopback(reached.hostname)) {
+      return { ...doc, openai_base: `${reached.origin}${advertised.pathname}${advertised.search}` };
+    }
+  } catch {
+    // A base that does not parse is left for the request to fail on, with its own message.
+  }
+  return doc;
+}
+
 export class CogitatorProvider implements ModelProvider {
   readonly name = "cogitator";
   readonly capabilities: Capabilities = { embed: true, chat: true, decide: false, transcribe: false };
@@ -92,7 +108,7 @@ export class CogitatorProvider implements ModelProvider {
     if (!doc && this.options.gatewayUrl) {
       try {
         const response = await this.fetchImpl(joinUrl(this.options.gatewayUrl, "/v1/cogitator/discovery"), { headers: authHeaders(await this.options.interactiveKey.get()), signal: AbortSignal.timeout(3_000) });
-        if (response.ok) doc = (await response.json()) as Discovery;
+        if (response.ok) doc = reachableBase((await response.json()) as Discovery, this.options.gatewayUrl);
       } catch {
         doc = null;
       }

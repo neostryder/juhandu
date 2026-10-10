@@ -4,6 +4,9 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Fixed
+- [Visible] [Compatibility] **Juhandu can use a Cogitator gateway on another machine.** Requests used to go to the loopback address in the gateway's discovery document and were refused, so items never got summaries. Juhandu now sends them to the host it reached the gateway at.
+
 ## [0.2.0] - 2026-10-10
 
 ### Added
