@@ -5,9 +5,9 @@
 /** @type {any} */
 const sw = self;
 
-const SHELL = "juhandu-shell-v1";
+const SHELL = "juhandu-shell-v2";
 const DATA = "juhandu-data-v1";
-const FILES = ["/", "/app.js", "/ui.js", "/briefing.js", "/rules.js", "/feeds.js", "/pipes.js", "/connect.js", "/login.js", "/tokens.css", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
+const FILES = ["/", "/app.js", "/ui.js", "/briefing.js", "/rules.js", "/feeds.js", "/pipes.js", "/connect.js", "/setup.js", "/login.js", "/tokens.css", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
 const READABLE = /^\/api\/(items|health|briefings(\/\d+)?)$/;
 
 sw.addEventListener("install", (/** @type {any} */ event) => {

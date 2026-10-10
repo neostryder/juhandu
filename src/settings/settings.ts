@@ -145,7 +145,7 @@ function readModel(raw: unknown): string {
 function readKey(raw: unknown): string {
   if (typeof raw !== "string") throw new SettingsError(400, "The key must be text");
   const text = raw.trim();
-  if (!text) throw new SettingsError(422, "The key is empty.");
+  if (!text) throw new SettingsError(422, "Paste a key before saving.");
   if (text.length > 4096 || /\s|[\u0000-\u001f\u007f]/.test(text)) throw new SettingsError(422, "A key is one line with no spaces. Copy it again and paste only the key.");
   return text;
 }
@@ -289,7 +289,7 @@ export class AppSettings {
     }
     if (place !== "internet" && !confirmed) {
       const where = place === "this-machine" ? "this computer" : "a private network";
-      throw new SettingsError(409, `That address points to ${where}. Confirm that this server is yours, then save again.`, { code: "confirm-address", place });
+      throw new SettingsError(409, `That address points to ${where}. Save it only if this server is yours.`, { code: "confirm-address", place });
     }
   }
 

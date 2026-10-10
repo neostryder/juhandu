@@ -6,6 +6,7 @@ import "./rules.js";
 import "./feeds.js";
 import "./pipes.js";
 import "./connect.js";
+import "./setup.js";
 import { LOGIN_STYLES, loginPicker } from "./login.js";
 import { api, applyEffects, applyTheme, baseStyles, currentTheme, effectsOn, el, initSettings, messageOf, SEAL, THEMES, voteControls } from "./ui.js";
 
@@ -68,7 +69,7 @@ class VzApp extends HTMLElement {
   }
 
   viewFromHash() {
-    const name = location.hash.replace(/^#\/?/, "");
+    const name = location.hash.replace(/^#\/?/, "").split("/")[0];
     return name === "reading" || name === "filtered" || name === "rules" || name === "feeds" || name === "pipes" || name === "connect" ? name : "briefing";
   }
 
@@ -106,7 +107,10 @@ class VzApp extends HTMLElement {
     if (this.view === "pipes") /** @type {any} */ (pipes).load();
     const connect = this.$("vz-connect");
     connect.hidden = this.view !== "connect";
-    if (this.view === "connect") /** @type {any} */ (connect).load();
+    if (this.view === "connect") /** @type {any} */ (connect).load(location.hash.split("/")[2] ?? "");
+    const setup = this.$("vz-setup");
+    setup.hidden = this.view !== "briefing" && this.view !== "reading";
+    if (!setup.hidden) /** @type {any} */ (setup).load();
     if (showItems) this.refresh();
     this.loadAsk();
     for (const shown of [briefing, items, rules, feeds, pipes, connect]) {
@@ -285,7 +289,7 @@ class VzApp extends HTMLElement {
         h1 { font-family: var(--font-display); font-style: italic; font-weight: 700; font-size: 44px; line-height: 1.1; margin: 0; color: var(--accent); }
         .tools { display: flex; gap: 4px; }
         .tools button { padding: 0; width: 44px; display: inline-grid; place-items: center; border-color: transparent; color: var(--muted); }
-        .tools button[aria-pressed="false"] { opacity: .5; }
+        .tools button[aria-pressed="true"] { color: var(--text); }
         nav { display: flex; gap: 22px; margin: 10px 0 14px; border-bottom: 1px solid var(--line); overflow-x: auto; overflow-y: hidden; }
         nav a { padding: 10px 0; color: var(--muted); text-decoration: none; letter-spacing: .06em; text-transform: uppercase; font-size: 14px; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
         nav a:hover { color: var(--text-strong); }
@@ -305,7 +309,7 @@ class VzApp extends HTMLElement {
         article a:visited { color: var(--muted); }
         .meta { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
         article p { margin: 8px 0 0; }
-        article .why { font-size: 14px; }
+        article .why { font-size: 15px; }
         article details.video { margin-top: 10px; }
         article details.video summary { cursor: pointer; color: var(--muted); min-height: 32px; display: flex; align-items: center; }
         article details.video .reading { white-space: pre-wrap; font-size: 15px; }
@@ -343,7 +347,7 @@ class VzApp extends HTMLElement {
           .seal, .seal svg { width: 34px; height: 34px; }
           :host { padding: 14px 16px calc(96px + env(safe-area-inset-bottom)); }
           .tabbar { display: grid; grid-template-columns: repeat(4, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--bg-raised); border-top: 1px solid var(--line-strong); box-shadow: 0 -1px 0 var(--line), 0 -10px 30px var(--glow); padding-bottom: env(safe-area-inset-bottom); }
-          .tabbar a, .tabbar button { display: grid; justify-items: center; align-content: center; gap: 2px; min-height: 58px; padding: 6px 0; border: 0; border-radius: 0; color: var(--muted); text-decoration: none; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; background: transparent; }
+          .tabbar a, .tabbar button { display: grid; justify-items: center; align-content: center; gap: 2px; min-height: 58px; padding: 6px 0; border: 0; border-radius: 0; color: var(--muted); text-decoration: none; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; background: transparent; }
           .tabbar a svg, .tabbar button svg { width: 22px; height: 22px; }
           .tabbar [aria-current="page"] { color: var(--accent); }
           .tabbar [aria-current="page"]::before { content: ""; position: absolute; top: 0; width: 28px; height: 2px; background: var(--accent); }
@@ -355,6 +359,7 @@ class VzApp extends HTMLElement {
         <div class="rule-double"></div>
         <nav id="nav" aria-label="Sections"></nav>
         <div id="offline" role="status" hidden>You are offline. This shows what was saved on this device, and votes wait until you are back online.</div>
+        <vz-setup hidden></vz-setup>
         <form id="add"><input id="url" type="url" placeholder="Paste a feed, a site or a YouTube channel" aria-label="Feed address" required><button class="primary" type="submit">Add</button><div id="login" class="login-row"></div></form>
         <div id="status" role="status"></div>
         <div id="ask" hidden></div>

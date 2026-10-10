@@ -223,7 +223,7 @@ test("the settings API keeps keys server side, asks before internal addresses an
 
     const local = await call(port, "PUT", "/api/settings/endpoints/vision", json, JSON.stringify({ url: "http://127.0.0.1:5000/v1" }));
     assert.equal(local.status, 409);
-    assert.deepEqual(JSON.parse(local.text), { error: "That address points to this computer. Confirm that this server is yours, then save again.", code: "confirm-address", place: "this-machine" });
+    assert.deepEqual(JSON.parse(local.text), { error: "That address points to this computer. Save it only if this server is yours.", code: "confirm-address", place: "this-machine" });
     assert.equal((await call(port, "PUT", "/api/settings/endpoints/vision", json, JSON.stringify({ url: "http://127.0.0.1:5000/v1", confirmAddress: true }))).status, 200);
     assert.equal((await call(port, "PUT", "/api/settings/endpoints/nope", json, "{}")).status, 404);
 

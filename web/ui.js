@@ -36,7 +36,7 @@ export async function api(path, init = {}) {
   }
   window.dispatchEvent(new CustomEvent("juhandu-link", { detail: { saved: response.headers.get("x-juhandu-saved") === "1" } }));
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
+  if (!response.ok) throw Object.assign(new Error(body.error || `Request failed (${response.status})`), { status: response.status, code: body.code, place: body.place });
   return body;
 }
 
@@ -190,7 +190,8 @@ export const baseStyles = `
   :is(button, input, select, textarea, summary, a):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .chip { display: inline-block; max-width: 100%; padding: 0 9px; margin: 1px 2px; border: 1px solid var(--accent-dim); border-radius: 999px; color: var(--accent); background: transparent; font-style: normal; font-size: .92em; line-height: 1.5; overflow-wrap: anywhere; vertical-align: baseline; }
   .muted { color: var(--muted); }
-  .small { font-size: 14px; }
+  .small { font-size: 15px; }
+  ::placeholder { color: var(--muted); opacity: 1; font-style: italic; }
   .votes { margin-top: 10px; }
   .vote-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .vote-btn { width: 44px; min-height: 44px; height: 44px; padding: 0; border-radius: 50%; display: inline-grid; place-items: center; color: var(--muted); }
@@ -207,8 +208,8 @@ export const baseStyles = `
   .switch { position: relative; width: 52px; min-height: 44px; padding: 0; border: 0; background: transparent; flex: none; }
   .switch::before { content: ""; position: absolute; left: 0; top: 11px; width: 52px; height: 22px; border-radius: 11px; border: 1px solid var(--line-strong); background: var(--bg); }
   .switch::after { content: ""; position: absolute; left: 4px; top: 15px; width: 14px; height: 14px; border-radius: 50%; background: var(--muted); }
-  .switch[aria-checked="true"]::before { border-color: var(--accent); background: var(--accent-dim); }
-  .switch[aria-checked="true"]::after { left: 34px; background: var(--accent); }
+  .switch[aria-checked="true"]::before { border-color: var(--accent); background: var(--accent); }
+  .switch[aria-checked="true"]::after { left: 34px; background: var(--accent-ink); }
   .fx .switch::after { transition: left .18s ease, background .18s ease; }
   [hidden] { display: none !important; }
   input[type="range"], input[type="checkbox"] { accent-color: var(--accent); }

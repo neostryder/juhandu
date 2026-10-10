@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { AddressInfo } from "node:net";
@@ -42,11 +42,16 @@ test("the page links the manifest and every script file it imports exists", () =
   const html = readFileSync(join(WEB, "index.html"), "utf8");
   assert.match(html, /rel="manifest" href="\/manifest\.webmanifest"/);
   assert.match(html, /name="viewport"[^>]*viewport-fit=cover/);
-  for (const name of ["app.js", "ui.js", "briefing.js", "rules.js", "feeds.js", "pipes.js", "connect.js", "login.js"]) {
+  for (const name of ["app.js", "ui.js", "briefing.js", "rules.js", "feeds.js", "pipes.js", "connect.js", "setup.js", "login.js"]) {
     for (const [, spec] of readFileSync(join(WEB, name), "utf8").matchAll(/from "\.\/([\w-]+\.js)"|import "\.\/([\w-]+\.js)"/g).map((m) => [m[0], m[1] ?? m[2]] as const)) {
       assert.ok(existsSync(join(WEB, spec!)), `${name} imports ./${spec} which is missing`);
     }
   }
+});
+
+test("the offline copy lists every script the page loads", () => {
+  const sw = readFileSync(join(WEB, "sw.js"), "utf8");
+  for (const name of readdirSync(WEB).filter((f) => f.endsWith(".js") && f !== "sw.js")) assert.ok(sw.includes(`"/${name}"`), `sw.js does not cache ${name}`);
 });
 
 test("the server sends the manifest, the service worker and the icons with the right types", async () => {
