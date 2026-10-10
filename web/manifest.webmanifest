@@ -1,0 +1,21 @@
+{
+  "name": "Juhandu",
+  "short_name": "Juhandu",
+  "description": "A feed reader that learns what you want and keeps the rest out of your way.",
+  "id": "/",
+  "start_url": "/#/briefing",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#120e0b",
+  "theme_color": "#120e0b",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Reading", "url": "/#/reading" },
+    { "name": "Feeds", "url": "/#/feeds" }
+  ]
+}

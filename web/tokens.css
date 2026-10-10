@@ -1,0 +1,75 @@
+/* Design tokens for the Study look. Dark is the default; the light set follows the system or the data-theme attribute. */
+:root {
+  --bg: #120e0b;
+  --bg-raised: #17120d;
+  --line: #3a2e22;
+  --line-strong: #7a6648;
+  --text: #efe3cf;
+  --text-strong: #f4e9d6;
+  --muted: #a8987f;
+  --accent: #d9a441;
+  --accent-dim: #8f6a24;
+  --accent-ink: #120e0b;
+  --down: #c9788a;
+  --glow: rgba(217, 164, 65, .14);
+  --t: 1;
+  --font-display: "Cormorant Garamond", Georgia, serif;
+  --font-body: "Alegreya Sans", system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #f6f0e4;
+  --bg-raised: #fffaf0;
+  --line: #d9ccb4;
+  --line-strong: #8f7c58;
+  --text: #2b2318;
+  --text-strong: #1a140b;
+  --muted: #6e5f47;
+  --accent: #8a5a00;
+  --accent-dim: #b58a3a;
+  --accent-ink: #fffaf0;
+  --down: #a3364a;
+  --glow: rgba(138, 90, 0, .12);
+  color-scheme: light;
+}
+
+:root[data-effects="off"] {
+  --t: 0;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f6f0e4;
+    --bg-raised: #fffaf0;
+    --line: #d9ccb4;
+    --line-strong: #8f7c58;
+    --text: #2b2318;
+    --text-strong: #1a140b;
+    --muted: #6e5f47;
+    --accent: #8a5a00;
+    --accent-dim: #b58a3a;
+    --accent-ink: #fffaf0;
+    --down: #a3364a;
+    --glow: rgba(138, 90, 0, .12);
+    color-scheme: light;
+  }
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 17px;
+  line-height: 1.5;
+}
+
+a {
+  color: var(--accent);
+}

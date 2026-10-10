@@ -1,0 +1,179 @@
+# Setting up Juhandu
+
+Juhandu reads its settings from environment variables, and every one is optional. A fresh clone runs with `npm start` and no settings at all: it listens on http://127.0.0.1:8787, keeps its data in the project's `data` folder, and leaves the AI features off until you connect a model.
+
+## Connecting models
+
+Juhandu picks a model adapter with `JUHANDU_LOCAL_AI`. Left at `auto`, it uses Cogitator when Cogitator is set up (see below), and otherwise uses the OpenAI-style endpoints named by `JUHANDU_EMBED_URL` and `JUHANDU_CHAT_URL`. With neither, AI features stay off and the rest of Juhandu works. The start-up log says which adapter it chose.
+
+### OpenAI-style endpoints
+
+Any server that answers the OpenAI `/embeddings` and `/chat/completions` routes works, whether it runs on this machine or is a hosted API. The address is the base URL that those routes hang off, usually ending in `/v1`. For a model server on this machine:
+
+```
+JUHANDU_EMBED_URL=http://127.0.0.1:8080/v1
+JUHANDU_EMBED_MODEL=nomic-embed-text-v1.5
+JUHANDU_CHAT_URL=http://127.0.0.1:8080/v1
+JUHANDU_CHAT_MODEL=your-chat-model
+```
+
+The embedding endpoint is used for taste, semantic rules, story matching and rule proposals. The chat endpoint writes summaries, story lines and rule drafts, answers pipe questions, digests video captions and, by default, acts as the judge. Either one can be set alone, and the features that need the other stay off.
+
+Each endpoint takes the same set of variables after its prefix: `_URL` turns it on, `_KEY` is the API key sent as a bearer token, `_MODEL` names the model, `_LOCAL` set to `1` or `0` overrides whether it counts as on this machine (by default a loopback address counts as local), and, for the chat endpoint, `_EXTRA_BODY` is JSON added to each request. `JUHANDU_EMBED_KEY` and `JUHANDU_CHAT_KEY` can also come from the secret store under `embed/key` and `chat/key`.
+
+| Prefix | Used for | Default model |
+| --- | --- | --- |
+| `JUHANDU_EMBED` | Embeddings | `nomic-embed-text-v1.5` |
+| `JUHANDU_CHAT` | Summaries, proposals, the judge, caption digests | `default` |
+| `JUHANDU_TRANSCRIBE` | Speech to text for videos (`/audio/transcriptions`) | `whisper-1` |
+| `JUHANDU_VISION` | Describing video frames (`/chat/completions` with images) | `default` |
+
+Embeddings are stored with a name, `JUHANDU_EMBED_TAG`, and embeddings with different names are never compared. Change the tag when you change the embedding model, so old and new vectors are not mixed.
+
+### Cogitator
+
+Cogitator is a local model host that Juhandu can use in place of separate endpoints. It is optional, it is not publicly available yet, and nothing in Juhandu needs it: any OpenAI-style embedding and chat endpoint does the same work.
+
+Juhandu finds Cogitator through a discovery file, a JSON document with `schema` set to `1`, an `openai_base` URL, a `health` URL, and a list of `roles`, each with a `name` and a `chain` of model names. Juhandu uses the roles named `embed`, `summarize` and `judge`, and falls back to `describe` for summaries and judging. It reads the file from `JUHANDU_COGITATOR_DISCOVERY`, by default `%LOCALAPPDATA%\Cogitator\data\discovery.json` on Windows, or fetches it from `/v1/cogitator/discovery` under `JUHANDU_COGITATOR_URL`. Requests carry one of two bearer keys: the interactive key for work you are waiting on and the background key for the rest. They come from the secrets `cogitator/interactive` and `cogitator/background`, or from the files named by `JUHANDU_COGITATOR_KEY_FILE` and `JUHANDU_COGITATOR_BACKGROUND_KEY_FILE`.
+
+Cogitator is always treated as being on this machine, so it may receive private items.
+
+### Judges
+
+A judge answers the yes or no, pick-one and rank questions: whether two items are the same story, and the questions your pipes ask. `JUHANDU_JUDGE` lists the judges whose answers count, in the order they are tried, and `JUHANDU_JUDGE_SHADOW` lists judges that are asked the same questions only so their answers can be logged and compared. Every answer goes into the decision log either way. There are three kinds:
+
+- `llm` asks the chat model. It is the default when a chat model is configured.
+- `typed` asks your own servers that speak the typed-decision protocol, `POST /v1/systemone`. List their base URLs in `JUHANDU_TYPED_URLS`, separated by commas; Juhandu uses the first one that answers and skips a failing one for a while. `JUHANDU_TYPED_MODEL` is the model name sent with each request. To send a different model for each kind of decision, set `JUHANDU_TYPED_LANE_MODEL` to a template such as `adapter-{lane}`, where `{lane}` becomes `same_story` or `pipe_ask`; the template is ignored when `JUHANDU_TYPED_MODEL` is set. A typed server is not assumed to be calibrated, so it only shadows, even when it is listed in `JUHANDU_JUDGE`, until you set `JUHANDU_TYPED_ACTS=1`. Typed servers are sent no key and are always treated as being on this machine, so they may receive private items.
+- `jev` asks the hosted Jev service from TypeSafe over the same protocol. It needs a key from `JUHANDU_JEV_KEY`, `TYPESAFE_API_KEY`, `JEV_API_KEY`, the file named by `JUHANDU_JEV_KEY_FILE`, or the secret `jev/key`. Jev is a hosted endpoint, so it gets private items only when `jev` is named in `JUHANDU_PRIVATE_ALLOW`.
+
+Each question is asked twice in one request, the second time phrased the other way round, and the two answers are averaged. For example, `JUHANDU_JUDGE=jev,llm` and `JUHANDU_JUDGE_SHADOW=typed` lets Jev answer, falls back to the chat model when Jev cannot, and logs a typed server's answers beside them.
+
+### Private items
+
+Every feed is public or private. Public items may go to any endpoint. Private items go only to endpoints on this machine and to endpoints named in `JUHANDU_PRIVATE_ALLOW`, a comma-separated list of `embeddings`, `chat`, `transcription`, `vision` and `jev`. When no allowed endpoint is available, the work on a private item waits in the queue.
+
+## Running behind a reverse proxy
+
+Juhandu has no sign-in yet, so anything beyond this machine should reach it only through a reverse proxy that authenticates every request, such as Cloudflare Access. Keep `JUHANDU_HOST` at `127.0.0.1` when the proxy runs on the same machine, and set `JUHANDU_PUBLIC_HOST` to the public name the proxy serves, such as `JUHANDU_PUBLIC_HOST=news.example.com`. The API answers only requests addressed to this machine or to a name in that list, so without it the page loads but every API call from it is refused with a 403. A proxy that rewrites the `Host` header to the local address still needs the public name listed, because the browser's `Origin` header carries it.
+
+Programs that call the API directly follow the same rule, and a request with a body must send it with `Content-Type: application/json`, or it is refused with a 415.
+
+## Settings
+
+Server and briefing:
+
+| Variable | Default | What it changes |
+| --- | --- | --- |
+| `JUHANDU_HOST` | `127.0.0.1` | The address the server listens on. Anything other than `127.0.0.1`, `::1` or `localhost` prints a warning, because Juhandu has no sign-in yet. |
+| `JUHANDU_PORT` | `8787` | The port. `PORT` is read when this is unset. |
+| `JUHANDU_DATA` | `data` in the project | The folder for the database and the `secrets` folder. |
+| `JUHANDU_BRIEFING_HOUR` | `7` | The hour, in server local time, after which the daily briefing is built. |
+| `JUHANDU_MERGE_SIMILARITY` | `0.8` | How similar two items must be before the judge is asked whether they are the same story. |
+| `JUHANDU_PUBLIC_HOST` | none | Comma-separated host names, besides this machine's own, that the web app, the API and the MCP endpoint answer to. Set it to the public name when Juhandu runs behind a reverse proxy; without it, every API request through that name is refused. |
+| `JUHANDU_PRIVATE_ALLOW` | none | Comma-separated endpoint names that may receive private items. |
+
+Model adapter and embeddings:
+
+| Variable | Default | What it changes |
+| --- | --- | --- |
+| `JUHANDU_LOCAL_AI` | `auto` | `cogitator`, `openai` or `off`. |
+| `JUHANDU_EMBED_URL`, `_KEY`, `_MODEL`, `_LOCAL` | none | The embedding endpoint, as described above. |
+| `JUHANDU_CHAT_URL`, `_KEY`, `_MODEL`, `_LOCAL`, `_EXTRA_BODY` | none | The chat endpoint. |
+| `JUHANDU_EMBED_TAG` | `nomic-embed-text-v1.5-q8_0` | The name stored with each embedding. |
+| `JUHANDU_EMBED_DIMS` | the model's own | Keeps only this many dimensions of each embedding. |
+| `JUHANDU_EMBED_DOC_PREFIX` | `clustering: ` | Text put in front of each item before it is embedded. |
+| `JUHANDU_COGITATOR_URL` | none | Cogitator's address, when its discovery file is not on this machine. |
+| `JUHANDU_COGITATOR_DISCOVERY` | `%LOCALAPPDATA%\Cogitator\data\discovery.json` on Windows, none elsewhere | Where to find Cogitator's discovery file. |
+| `JUHANDU_COGITATOR_KEY_FILE` | none | A file holding Cogitator's interactive key, in place of the secret `cogitator/interactive`. |
+| `JUHANDU_COGITATOR_BACKGROUND_KEY_FILE` | none | A file holding Cogitator's background key, in place of the secret `cogitator/background`. |
+
+Judges:
+
+| Variable | Default | What it changes |
+| --- | --- | --- |
+| `JUHANDU_JUDGE` | `llm` when a chat model exists | Comma-separated judges whose answers count, in the order they are tried: `llm`, `typed`, `jev`. |
+| `JUHANDU_JUDGE_SHADOW` | none | Judges asked only so their answers are logged. |
+| `JUHANDU_TYPED_URLS` | none | Comma-separated base URLs of typed-decision servers. |
+| `JUHANDU_TYPED_MODEL` | `default` | The model name sent to the typed-decision servers. |
+| `JUHANDU_TYPED_LANE_MODEL` | none | A template such as `adapter-{lane}` that names a model for each kind of decision. Ignored when `JUHANDU_TYPED_MODEL` is set. |
+| `JUHANDU_TYPED_ACTS` | off | Set to `1` to let a typed server's answers count; otherwise it only shadows. |
+| `JUHANDU_JEV_URL` | `https://api.typesafe.ai` | The Jev service. |
+| `JUHANDU_JEV_MODEL` | `jev-latest` | The Jev model. |
+| `JUHANDU_JEV_KEY` | none | The Jev key. `TYPESAFE_API_KEY` and `JEV_API_KEY` are read too. |
+| `JUHANDU_JEV_KEY_FILE` | none | A file holding the Jev key. |
+
+Videos:
+
+| Variable | Default | What it changes |
+| --- | --- | --- |
+| `JUHANDU_VIDEO` | on | Set to `off` to switch the video reader off. |
+| `JUHANDU_VIDEO_BATCH` | `3` | Videos read in each run of the video reader, which runs once a minute. |
+| `JUHANDU_GEMINI` | on | Set to `off` to skip Gemini. |
+| `JUHANDU_GEMINI_KEY` | none | The Google API key. The secret `gemini_api_key` (or `gemini/key`) works too. |
+| `JUHANDU_GEMINI_MODELS` | the newest Flash models the key can use | Comma-separated Gemini models to try instead. |
+| `JUHANDU_TRANSCRIBE_URL`, `_KEY`, `_MODEL`, `_LOCAL` | none | The speech-to-text endpoint. |
+| `JUHANDU_VISION_URL`, `_KEY`, `_MODEL`, `_LOCAL` | none | The vision endpoint. |
+| `JUHANDU_YTDLP` | `yt-dlp` on the path | Where yt-dlp is. |
+| `JUHANDU_FFMPEG` | `ffmpeg` on the path | Where ffmpeg is. |
+| `JUHANDU_VIDEO_LANGS` | `en.*,en` | Caption languages to fetch. |
+| `JUHANDU_VIDEO_FRAMES` | `12` | Frames sent to the vision server, up to 40. |
+
+Secrets and the MCP bridge:
+
+| Variable | Default | What it changes |
+| --- | --- | --- |
+| `JUHANDU_SECRETS` | `env,bws,os,dir` | Which secret backends to use, in order. |
+| `JUHANDU_SECRETS_DIR` | `secrets` in the data folder | The folder for the `dir` backend. |
+| `JUHANDU_SECRET_<NAME>` | none | Hands one secret in through the environment (see below). |
+| `BWS_ACCESS_TOKEN` | none | Turns on the Bitwarden Secrets Manager backend. |
+| `JUHANDU_BWS_PROJECT` | none | The Bitwarden Secrets Manager project to look in. |
+| `JUHANDU_URL` | `http://127.0.0.1:8787` | Where `src/mcp/stdio.ts` finds Juhandu. |
+| `JUHANDU_MCP_TOKEN` | none | The token `src/mcp/stdio.ts` sends. |
+
+## Secrets
+
+API keys, feed logins, notification passwords and the MCP token live in a secret store, never in the database, the API's responses or the log. The store reads from these backends in order:
+
+- `env`: environment variables named `JUHANDU_SECRET_<NAME>`.
+- `bws`: Bitwarden Secrets Manager through the `bws` command, when `BWS_ACCESS_TOKEN` is set. A secret is found by its own name, by `JUHANDU_<NAME>` or by `<NAME>`, so `gemini_api_key` also finds `GEMINI_API_KEY`.
+- `os`: the operating system's credential store (Windows Credential Manager, the macOS Keychain or libsecret).
+- `dir`: a folder of files readable only by the owner.
+
+New secrets are written to the credential store, or to the folder when there is no credential store. The `env` and `bws` backends are read only.
+
+To hand a secret in as an environment variable, take its name, uppercase it, turn every character other than a letter or digit into `_`, and put `JUHANDU_SECRET_` in front. The secret `notify.telegram.token` becomes `JUHANDU_SECRET_NOTIFY_TELEGRAM_TOKEN`. The names in use are `cogitator/interactive`, `cogitator/background`, `embed/key`, `chat/key`, `jev/key`, `gemini_api_key`, `notify.email.password`, `notify.telegram.token`, `notify.discord.webhook`, `mcp.token`, and `source/<id>` for each feed login. A key set directly in its own environment variable, such as `JUHANDU_CHAT_KEY`, wins over the stored secret.
+
+## Command-line tools
+
+`node src/secrets/cli.ts` manages the secret store:
+
+```
+node src/secrets/cli.ts status
+node src/secrets/cli.ts has <name>
+node src/secrets/cli.ts set <name>
+node src/secrets/cli.ts delete <name>
+```
+
+`status` lists the backends and whether each is available and writable. `set` reads the value from standard input so it stays out of your shell history, for example `type key.txt | node src/secrets/cli.ts set chat/key` on Windows or `node src/secrets/cli.ts set chat/key < key.txt` elsewhere. No command prints a secret's value.
+
+`node src/training/cli.ts status` shows how many practice questions each kind of decision has, and `node src/training/cli.ts export [--lane same_story,pipe_ask,wants] [--private] [--out FILE]` writes them as JSONL. It reads the database and sends nothing anywhere. Items from private feeds are included only with `--private`.
+
+`node src/mcp/stdio.ts` connects an MCP client that speaks standard input and output to a running Juhandu.
+
+## The practice-question format
+
+The training export and the Teach your own judge downloads write one JSON object per line. Each row holds one yes or no question in the form the typed-decision protocol uses, so a model trained on the rows sees the same requests the `typed` judge sends.
+
+| Field | What it holds |
+| --- | --- |
+| `id` | A stable identifier for the row. |
+| `lane` | The kind of decision: `same_story`, `pipe_ask` or `wants`. |
+| `ts` | When the decision or vote was made. |
+| `state` | The question and the facts it concerns. |
+| `questions` | The question asked both ways, as `answer` and `inverse`. |
+| `human` | Your vote, as `answer` and `inverse` booleans. Present on `wants` rows. |
+| `teacher` | The hosted Jev answer, as probabilities. |
+| `local` | A typed server's shadow answer, as probabilities. |
+| `note` | The reason you gave with a vote, when there is one. |
+
+The `wants` rows come from your likes and dislikes. The `same_story` and `pipe_ask` rows come from logged decisions and appear only for questions Jev answered, since its answer is their label. A row belongs to the test side when sha1 of its `id`, read as a number, is divisible by 5, and to the training side otherwise, so a row stays on the same side in every export.
