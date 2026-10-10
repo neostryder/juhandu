@@ -10,6 +10,7 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 - [Visible] [UI] **The Connect screen sets up models and video reading, with a Test button for each.** Chat and embedding endpoints, Cogitator, the Gemini key, and the speech and vision servers can be saved without a restart. Keys go to the secret store, and an environment variable still wins over a saved value. When the Gemini key fails its Test, the card says so until a later Test passes or a new key is saved.
 - [Visible] [UI] **A Getting started list on the Briefing and Reading screens tracks the first steps.** It covers adding a feed, connecting a chat model, setting up video reading, and choosing where the briefing goes, and links each step to its screen. Once hidden, it comes back from a button at the top of the Connect screen.
 - [Visible] [UI] **Discord delivery can send the briefing as a direct message from a Discord bot.** The Discord card on the Connect screen chooses between posting to a channel through a webhook and a direct message, which needs the bot's token and your Discord user id. Both secrets can be saved, and only the chosen way's secret is used.
+- [Visible] [UI] **Keyword and regular expression rules can search an item's link as well as its title, text, and author.** The rule editor has a link checkbox beside the other fields, so a regular expression on the link that matches `youtube.com/shorts/` hides YouTube Shorts.
 
 ### Changed
 

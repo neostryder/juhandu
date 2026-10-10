@@ -5,7 +5,7 @@ import { auditPass } from "../taste/meter.ts";
 export type RuleKind = "block" | "weight" | "pin";
 export type RuleStatus = "active" | "shadow" | "disabled";
 export type RuleOrigin = "user" | "learned";
-export type RuleField = "title" | "text" | "author";
+export type RuleField = "title" | "text" | "author" | "url";
 
 export type RuleScope = { type: "all" } | { type: "folder"; folder: string } | { type: "source"; sourceId: number };
 

@@ -167,7 +167,7 @@ function readLogin(raw: unknown): Login {
 
 const RULE_KINDS: RuleKind[] = ["block", "weight", "pin"];
 const RULE_STATUSES: RuleStatus[] = ["active", "shadow", "disabled"];
-const FIELDS = ["title", "text", "author"] as const;
+const FIELDS = ["title", "text", "author", "url"] as const;
 
 function strings(value: unknown, limit = 50): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string").map((v) => v.slice(0, 300)).slice(0, limit) : [];

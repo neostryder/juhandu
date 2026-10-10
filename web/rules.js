@@ -3,7 +3,7 @@
 import { api, baseStyles, effectsOn, el, messageOf } from "./ui.js";
 
 const VERBS = { block: "Hide", pin: "Always show" };
-const FIELD_LABEL = { title: "title", text: "text", author: "author" };
+const FIELD_LABEL = { title: "title", text: "text", author: "author", url: "link" };
 const KIND_CHOICES = [
   ["block", "Hide"],
   ["weight+", "Favor"],
@@ -343,7 +343,7 @@ class VzRules extends HTMLElement {
     const threshold = /** @type {HTMLInputElement} */ (el("input", { type: "range", id: "f-threshold", min: "0.3", max: "0.95", step: "0.01", value: String(c.threshold ?? 0.6) }));
     const thresholdLabel = el("span", { class: "muted" });
     const domains = /** @type {HTMLTextAreaElement} */ (el("textarea", { id: "f-domains", rows: 4, placeholder: "One domain per line, like example.com", value: (c.domains ?? []).join("\n") }));
-    const makeBoxes = () => ["title", "text", "author"].map((f) => el("label", { class: "check" }, el("input", { type: "checkbox", value: f, checked: (c.fields ?? ["title", "text"]).includes(f) }), ` ${f}`));
+    const makeBoxes = () => ["title", "text", "author", "url"].map((f) => el("label", { class: "check" }, el("input", { type: "checkbox", value: f, checked: (c.fields ?? ["title", "text"]).includes(f) }), ` ${FIELD_LABEL[/** @type {keyof typeof FIELD_LABEL} */ (f)]}`));
 
     const scope = /** @type {HTMLSelectElement} */ (el("select", { id: "f-scope" }, el("option", { value: "all", text: "Everywhere" }), el("option", { value: "folder", text: "One folder" }), el("option", { value: "source", text: "One feed" })));
     const scopeValue = /** @type {HTMLSelectElement} */ (el("select", { id: "f-scope-value", "aria-label": "Which one" }));

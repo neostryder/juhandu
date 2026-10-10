@@ -33,6 +33,14 @@ test("a regex rule matches and an invalid pattern is rejected and never matches"
   assert.equal(evaluateRules([rule({ condition: broken })], item).verdict, "show");
 });
 
+test("a rule can search an item's link, so YouTube Shorts can be hidden by their address", () => {
+  const shorts = rule({ condition: { type: "regex", pattern: "youtube\\.com/shorts/", flags: "i", fields: ["url"] } });
+  const short = { ...item, url: "https://www.youtube.com/shorts/abc123" };
+  const watch = { ...item, url: "https://www.youtube.com/watch?v=abc123" };
+  assert.equal(evaluateRules([shorts], short).verdict, "hide");
+  assert.equal(evaluateRules([shorts], watch).verdict, "show");
+});
+
 test("a pin overrides soft weights but never a hard block", () => {
   const dislike = rule({ kind: "weight", weight: -1, condition: keyword(["gadgets"]) });
   const pin = rule({ kind: "pin", condition: keyword(["laptops"]) });
