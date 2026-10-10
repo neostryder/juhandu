@@ -36,7 +36,7 @@ class VzBriefing extends HTMLElement {
         .entry:hover { border-color: var(--accent-dim); box-shadow: 0 6px 24px var(--glow); }
         .entry.pinned { border-left: 4px solid var(--accent); }
         .entry p { margin: 0; font-size: 18px; }
-        .badge { display: inline-block; margin-left: 8px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line-strong); border-radius: 999px; padding: 0 8px; vertical-align: middle; }
+        .badge { display: inline-block; margin-left: 8px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line-strong); border-radius: 999px; padding: 0 8px; vertical-align: middle; }
         .links { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 2px; }
         .links li { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 6px; }
         .links a { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; font-size: 15px; text-decoration: none; }
@@ -44,7 +44,7 @@ class VzBriefing extends HTMLElement {
         a, a:visited { color: var(--accent); }
         .links .src { color: var(--muted); }
         .links .votes { margin: 0; }
-        .more { color: var(--muted); font-size: 14px; margin: 8px 0 0; }
+        .more { color: var(--muted); font-size: 15px; margin: 8px 0 0; }
         .empty { text-align: center; padding: 40px 12px; color: var(--muted); }
         .empty p { font-size: 18px; margin: 0 0 14px; }
         .note { min-height: 22px; color: var(--muted); font-size: 15px; margin: 8px 0 0; }

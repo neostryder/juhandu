@@ -631,26 +631,26 @@ const STYLES = `
   .actions, .row { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
   .lede { margin: 4px 0 6px; }
   #status { min-height: 24px; font-size: 15px; }
-  .small { font-size: 14px; }
+  .small { font-size: 15px; }
   ol.rules { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 12px; }
   .rule { display: flex; gap: 14px; align-items: flex-start; justify-content: space-between; background: var(--bg-raised); border: 1px solid var(--line); border-radius: 6px; padding: 14px 18px; }
-  .rule.disabled { opacity: .62; }
+  .rule.disabled { border-style: dashed; background: transparent; }
   .rule.shadow { border-style: dashed; }
   .fx .rule { transition: border-color .2s ease, transform .2s ease; }
   .fx .rule:hover { border-color: var(--accent-dim); }
   .body { min-width: 0; flex: 1 1 auto; }
   .sentence { font-family: var(--font-display); font-size: 23px; line-height: 1.3; margin: 0; color: var(--text-strong); overflow-wrap: anywhere; }
-  .meta { margin: 6px 0 0; font-size: 14px; }
+  .meta { margin: 6px 0 0; font-size: 15px; }
   .controls { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 2px; flex: none; }
   .suggested { border: 1px solid var(--accent-dim); border-left: 4px solid var(--accent); border-radius: 6px; padding: 14px 18px 16px; margin-top: 14px; background: var(--bg-raised); }
   .suggested h3 { margin: 0 0 4px; color: var(--accent); }
   .suggested p.muted { margin: 0; }
   .suggested ol.rules { margin-top: 12px; }
   .suggested .rule { background: var(--bg); }
-  .evidence { margin-top: 8px; font-size: 14px; }
+  .evidence { margin-top: 8px; font-size: 15px; }
   .evidence summary { cursor: pointer; color: var(--muted); min-height: 32px; display: flex; align-items: center; }
   .evidence ul { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 4px; }
-  .vote { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line-strong); border-radius: 999px; padding: 0 7px; }
+  .vote { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line-strong); border-radius: 999px; padding: 0 7px; }
   .meter { margin-top: 8px; }
   .meter p { margin: 4px 0 0; }
   .track { height: 6px; border-radius: 3px; background: var(--bg); border: 1px solid var(--line-strong); overflow: hidden; }

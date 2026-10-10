@@ -11,7 +11,7 @@ const STYLES = `
   ul.pipes { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
   li.pipe { border: 1px solid var(--line); border-radius: 6px; padding: 12px 16px; background: var(--bg-raised); }
   li.pipe h3 { margin: 0; font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
-  .meta { color: var(--muted); font-size: 14px; margin: 2px 0 0; overflow-wrap: anywhere; }
+  .meta { color: var(--muted); font-size: 15px; margin: 2px 0 0; overflow-wrap: anywhere; }
   .badge { display: inline-block; margin-left: 8px; padding: 0 8px; border: 1px solid var(--accent-dim); border-radius: 999px; color: var(--accent); font-size: 13px; font-weight: 400; }
   .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; align-items: center; }
   .row button { min-height: 40px; }
@@ -32,7 +32,7 @@ const STYLES = `
   .out li { border-top: 1px solid var(--line); padding-top: 6px; overflow-wrap: anywhere; }
   .out li a { color: var(--text-strong); text-decoration: none; }
   .out li a:hover { color: var(--accent); }
-  .out .notes { color: var(--muted); font-size: 14px; margin: 4px 0; }
+  .out .notes { color: var(--muted); font-size: 15px; margin: 4px 0; }
   code { font-family: var(--font-mono, monospace); font-size: 13px; overflow-wrap: anywhere; }
   [hidden] { display: none !important; }
 `;

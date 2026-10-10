@@ -11,7 +11,7 @@ const STYLES = `
   ul.feeds { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
   li.feed { border: 1px solid var(--line); border-radius: 6px; padding: 12px 16px; background: var(--bg-raised); }
   li.feed h3 { margin: 0; font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
-  .meta { color: var(--muted); font-size: 14px; margin: 2px 0 0; overflow-wrap: anywhere; }
+  .meta { color: var(--muted); font-size: 15px; margin: 2px 0 0; overflow-wrap: anywhere; }
   .lock { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 0 8px; border: 1px solid var(--accent-dim); border-radius: 999px; color: var(--accent); font-size: 13px; font-weight: 400; }
   .broken { color: var(--down); }
   .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
