@@ -126,6 +126,66 @@ test("telegram and discord get the briefing once, without private items, and the
   store.close();
 });
 
+const BOT_TOKEN = ["MTIzNDU2Nzg5MDEyMzQ1Njc4", "GabcDE", "abcdefghijklmnopqrstuvwxyz0123456789ABCD"].join(".");
+const USER_ID = "123456789012345678";
+
+test("discord can send a direct message from a bot, without private items, and its secrets stay separate", async () => {
+  const { store, briefing, briefer, secrets, backend } = await fixture();
+  const calls: Call[] = [];
+  const headers: Record<string, string>[] = [];
+  const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+    const call = { url: String(url), body: JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown> };
+    calls.push(call);
+    headers.push(init?.headers as Record<string, string>);
+    return call.url.endsWith("/users/@me/channels") ? Response.json({ id: "555000111222333444" }) : Response.json({ id: "1" });
+  }) as typeof fetch;
+  const notifier = new Notifier({ store, secrets, getBriefing: (id) => briefer.get(id) ?? undefined, fetchImpl, clock: () => NOW, pauseMs: 0 });
+
+  await notifier.update("discord", { enabled: true }, WEBHOOK);
+  await assert.rejects(notifier.update("discord", { mode: "dm" }, WEBHOOK), /bot token/);
+  await assert.rejects(notifier.update("discord", { mode: "dm", userId: "not-a-number" }), /user id/);
+  await assert.rejects(notifier.update("discord", { mode: "carrier-pigeon" }), /webhook or dm/);
+  const before = (await notifier.status()).find((s) => s.id === "discord")!;
+  assert.deepEqual(before.secretsSet, { webhook: true, dm: false });
+
+  const switched = await notifier.update("discord", { mode: "dm", userId: USER_ID }, BOT_TOKEN);
+  assert.equal(switched.ready, true);
+  assert.deepEqual(switched.secretsSet, { webhook: true, dm: true });
+  assert.equal(backend.values.get("notify.discord.token"), BOT_TOKEN);
+  assert.equal(backend.values.get("notify.discord.webhook"), WEBHOOK, "the webhook is kept while the direct message is chosen");
+  assert.ok(!JSON.stringify(await notifier.status()).includes("MTIzNDU2"), "status never carries the token");
+
+  const results = await notifier.deliverBriefing(briefing.id);
+  assert.deepEqual(results.map((r) => [r.channel, r.result]), [["discord", "sent"]]);
+  assert.equal(calls[0]!.url, "https://discord.com/api/v10/users/@me/channels");
+  assert.deepEqual(calls[0]!.body, { recipient_id: USER_ID });
+  assert.equal(headers[0]!["authorization"], `Bot ${BOT_TOKEN}`);
+  assert.equal(calls[1]!.url, "https://discord.com/api/v10/channels/555000111222333444/messages");
+  assert.deepEqual(calls[1]!.body["allowed_mentions"], { parse: [] });
+  assert.equal(calls[1]!.body["flags"], 4096);
+  assert.ok(!calls.some((c) => c.url === WEBHOOK), "the webhook is not used in direct message mode");
+  assert.ok(!JSON.stringify(calls.map((c) => c.body)).includes("Quarterly"), "private feeds never go to Discord");
+
+  await notifier.update("discord", { mode: "webhook" });
+  assert.equal((await notifier.status()).find((s) => s.id === "discord")!.secretSet, true, "switching back finds the webhook again");
+  await notifier.update("discord", { mode: "dm" }, null);
+  assert.deepEqual((await notifier.status()).find((s) => s.id === "discord")!.secretsSet, { webhook: true, dm: false }, "forgetting clears only the secret of the way in use");
+  store.close();
+});
+
+test("a direct message that Discord refuses is reported in plain words and never repeats the token", async () => {
+  const { store, secrets, briefer } = await fixture();
+  const fetchImpl = (async (url: string | URL | Request) =>
+    String(url).endsWith("/users/@me/channels") ? Response.json({ id: "555000111222333444" }) : Response.json({ message: `Cannot send messages to this user ${BOT_TOKEN}`, code: 50007 }, { status: 403 })) as typeof fetch;
+  const notifier = new Notifier({ store, secrets, getBriefing: (id) => briefer.get(id) ?? undefined, fetchImpl, clock: () => NOW, pauseMs: 0 });
+  await notifier.update("discord", { enabled: true, mode: "dm", userId: USER_ID }, BOT_TOKEN);
+  await assert.rejects(notifier.test("discord"), (error: Error) => /share a server/.test(error.message) && !error.message.includes(BOT_TOKEN));
+  const noUser = new Notifier({ store, secrets, getBriefing: (id) => briefer.get(id) ?? undefined, fetchImpl, clock: () => NOW, pauseMs: 0 });
+  await noUser.update("discord", { userId: "" });
+  await assert.rejects(noUser.test("discord"), /user id/);
+  store.close();
+});
+
 test("private feeds can go to email only when told to, and never to telegram or discord", async () => {
   const { store, briefing, briefer, secrets } = await fixture();
   const mails: Mail[] = [];

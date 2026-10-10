@@ -1,6 +1,6 @@
 // Delivery of a briefing to email, Telegram and Discord. A daily briefing goes out once to every channel that is on and complete;
 // a failed send is retried a few times, then reported on the Connect screen. Private feeds are never sent to Telegram or Discord, and only to
-// email when that channel is told to include them. Secrets (the SMTP password, the bot token, the webhook address) live in the SecretStore only.
+// email when that channel is told to include them. Secrets (the SMTP password, the Telegram or Discord bot token, the webhook address) live in the SecretStore only.
 import type { Briefing } from "../briefing/briefer.ts";
 import type { SecretStore } from "../secrets/store.ts";
 import type { Delivery, Store } from "../store/store.ts";
@@ -34,8 +34,12 @@ export interface TelegramConfig {
 
 export interface DiscordConfig {
   enabled: boolean;
-  /** Posted with the suppress-notifications flag, so it does not ping anyone. */
+  /** Sent with the suppress-notifications flag, so it does not ping anyone. */
   silent: boolean;
+  /** webhook posts to a channel through a webhook address. dm has a bot send a direct message to one person. */
+  mode: "webhook" | "dm";
+  /** The Discord user id that receives the direct message in dm mode. */
+  userId: string;
 }
 
 export interface NotifyConfig {
@@ -47,10 +51,15 @@ export interface NotifyConfig {
 export const DEFAULTS: NotifyConfig = {
   email: { enabled: false, host: "", port: 587, security: "starttls", user: "", from: "", to: [], includePrivate: false },
   telegram: { enabled: false, chatId: "", silent: false },
-  discord: { enabled: false, silent: true },
+  discord: { enabled: false, silent: true, mode: "webhook", userId: "" },
 };
 
 const SECRET_NAMES: Record<ChannelId, string> = { email: "notify.email.password", telegram: "notify.telegram.token", discord: "notify.discord.webhook" };
+const DISCORD_DM_SECRET = "notify.discord.token";
+const BOT_TOKEN = /^[A-Za-z0-9_-]{16,40}\.[A-Za-z0-9_-]{4,10}\.[A-Za-z0-9_-]{20,100}$/;
+const USER_ID = /^\d{15,25}$/;
+const DISCORD_API = "https://discord.com/api/v10";
+const DISCORD_AGENT = "DiscordBot (https://github.com/neostryder/juhandu, 0.1)";
 const WEBHOOK = /^https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d{5,30}\/[A-Za-z0-9_-]{20,200}$/;
 const TOKEN = /^\d{5,15}:[A-Za-z0-9_-]{20,80}$/;
 const HOST = /^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$|^\[?[0-9A-Fa-f:]+\]?$/;
@@ -66,6 +75,8 @@ export interface ChannelStatus {
   config: EmailConfig | TelegramConfig | DiscordConfig;
   /** True when the secret this channel needs is stored. The secret itself never leaves the SecretStore. */
   secretSet: boolean;
+  /** Discord only: whether each way of sending has its secret stored, so the screen can say so before the way is switched. */
+  secretsSet?: { webhook: boolean; dm: boolean };
   /** True when it is on and has everything it needs. */
   ready: boolean;
   missing: string[];
@@ -81,6 +92,11 @@ export interface NotifierDeps {
   clock?: () => Date;
   /** Pause between the messages of one digest; tests set it to 0. */
   pauseMs?: number;
+}
+
+/** The SecretStore name for what a channel needs right now. Discord needs a bot token in dm mode and a webhook address otherwise. */
+function secretName(id: ChannelId, config: NotifyConfig): string {
+  return id === "discord" && config.discord.mode === "dm" ? DISCORD_DM_SECRET : SECRET_NAMES[id];
 }
 
 function text(value: unknown, max: number): string {
@@ -166,17 +182,27 @@ export class Notifier {
       const next: DiscordConfig = { ...all.discord };
       if (typeof patch["enabled"] === "boolean") next.enabled = patch["enabled"];
       if (typeof patch["silent"] === "boolean") next.silent = patch["silent"];
+      if ("mode" in patch) {
+        if (patch["mode"] !== "webhook" && patch["mode"] !== "dm") throw new NotifyError("The Discord way must be webhook or dm");
+        next.mode = patch["mode"];
+      }
+      if ("userId" in patch) {
+        next.userId = text(patch["userId"], 30);
+        if (next.userId && !USER_ID.test(next.userId)) throw new NotifyError("That does not look like a Discord user id, which is a long number. To copy yours, turn on Developer Mode in Discord, then right-click your name and choose Copy User ID");
+      }
       if (patch["includePrivate"] === true) throw new NotifyError("Private feeds are never sent to Discord");
       all.discord = next;
     }
     if (secret !== undefined) {
       if (!this.secrets) throw new NotifyError("There is no secret store, so nothing can be saved for this channel");
-      if (secret === null || secret === "") await this.secrets.delete(SECRET_NAMES[id]);
+      const name = secretName(id, all);
+      if (secret === null || secret === "") await this.secrets.delete(name);
       else {
         if (id === "telegram" && !TOKEN.test(secret)) throw new NotifyError("That does not look like a Telegram bot token (numbers, a colon, then letters and digits)");
-        if (id === "discord" && !WEBHOOK.test(secret)) throw new NotifyError("That does not look like a Discord webhook address (https://discord.com/api/webhooks/...)");
+        if (id === "discord" && all.discord.mode === "dm" && !BOT_TOKEN.test(secret)) throw new NotifyError("That does not look like a Discord bot token (three parts joined by dots). Copy it from your bot's page in the Discord Developer Portal");
+        if (id === "discord" && all.discord.mode === "webhook" && !WEBHOOK.test(secret)) throw new NotifyError("That does not look like a Discord webhook address (https://discord.com/api/webhooks/...)");
         if (/[\r\n]/.test(secret) || secret.length > 500) throw new NotifyError("That value is not usable");
-        await this.secrets.set(SECRET_NAMES[id], secret);
+        await this.secrets.set(name, secret);
       }
     }
     this.store.setMeta("notify:config", JSON.stringify(all));
@@ -189,7 +215,8 @@ export class Notifier {
     for (const d of this.store.listDeliveries(60).reverse()) last.set(d.channel, d);
     const out: ChannelStatus[] = [];
     for (const id of CHANNELS) {
-      const secretSet = this.secrets ? Boolean(await this.secrets.get(SECRET_NAMES[id])) : false;
+      const secretSet = this.secrets ? Boolean(await this.secrets.get(secretName(id, config))) : false;
+      const discordSecrets = id === "discord" ? { webhook: this.secrets ? Boolean(await this.secrets.get(SECRET_NAMES.discord)) : false, dm: this.secrets ? Boolean(await this.secrets.get(DISCORD_DM_SECRET)) : false } : undefined;
       const missing: string[] = [];
       if (id === "email") {
         if (!config.email.host) missing.push("a mail server");
@@ -199,6 +226,9 @@ export class Notifier {
       } else if (id === "telegram") {
         if (!secretSet) missing.push("the bot token");
         if (!config.telegram.chatId) missing.push("a chat id");
+      } else if (config.discord.mode === "dm") {
+        if (!secretSet) missing.push("the bot token");
+        if (!config.discord.userId) missing.push("your Discord user id");
       } else if (!secretSet) missing.push("the webhook address");
       const d = last.get(id);
       out.push({
@@ -206,6 +236,7 @@ export class Notifier {
         label: id === "email" ? "Email" : id === "telegram" ? "Telegram" : "Discord",
         config: config[id],
         secretSet,
+        ...(discordSecrets ? { secretsSet: discordSecrets } : {}),
         ready: config[id].enabled && missing.length === 0,
         missing,
         last: d ? { briefingId: d.briefingId, status: d.status, at: d.deliveredAt ?? d.updatedAt, error: d.lastError } : null,
@@ -221,7 +252,7 @@ export class Notifier {
   /** Sends one digest through one channel. Throws a plain-language error when it fails. */
   private async transmit(id: ChannelId, digest: Digest): Promise<void> {
     const config = this.config();
-    const secret = this.secrets ? await this.secrets.get(SECRET_NAMES[id]) : undefined;
+    const secret = this.secrets ? await this.secrets.get(secretName(id, config)) : undefined;
     const scrub = (message: string): string => (secret ? message.split(secret).join("***") : message);
     try {
       if (id === "email") {
@@ -242,6 +273,26 @@ export class Notifier {
           });
           const body = (await response.json().catch(() => ({}))) as { ok?: boolean; description?: string };
           if (!response.ok || body.ok === false) throw new NotifyError(`Telegram said: ${body.description ?? response.status}`);
+        }
+      } else if (config.discord.mode === "dm") {
+        if (!secret) throw new NotifyError("The bot token is not set");
+        if (!config.discord.userId) throw new NotifyError("The Discord user id is not set");
+        const headers = { authorization: `Bot ${secret}`, "content-type": "application/json", "user-agent": DISCORD_AGENT };
+        const opened = await this.fetchImpl(`${DISCORD_API}/users/@me/channels`, { method: "POST", headers, body: JSON.stringify({ recipient_id: config.discord.userId }) });
+        const dm = (await opened.json().catch(() => ({}))) as { id?: string; message?: string };
+        if (!opened.ok || !dm.id) throw new NotifyError(`Discord said: ${dm.message ?? opened.status}`);
+        for (const [i, message] of renderDiscord(digest).entries()) {
+          if (i) await this.pause();
+          const response = await this.fetchImpl(`${DISCORD_API}/channels/${dm.id}/messages`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ content: message, allowed_mentions: { parse: [] }, flags: config.discord.silent ? 4096 : 0 }),
+          });
+          if (!response.ok) {
+            const body = (await response.json().catch(() => ({}))) as { message?: string; code?: number };
+            const hint = body.code === 50007 ? " (the bot cannot message you. You and the bot must share a server, and your privacy settings for that server must allow direct messages from server members)" : response.status === 429 ? " (slow down, it will be retried)" : "";
+            throw new NotifyError(`Discord said: ${body.message ?? response.status}${hint}`);
+          }
         }
       } else {
         if (!secret) throw new NotifyError("The webhook address is not set");

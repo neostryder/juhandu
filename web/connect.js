@@ -57,7 +57,19 @@ const SECRET_LABEL = { email: "Mail password", telegram: "Bot token", discord: "
 const HELP = {
   email: "A message with the same briefing, as readable text and as a page with links. Use your own mail server, or an app password from your provider.",
   telegram: "Create a bot with @BotFather, paste its token here, then send your bot a message and use your chat id (a number, or @channelname for a channel the bot posts in).",
-  discord: "In a server you manage: Channel settings, Integrations, Webhooks, New Webhook, then copy the address and paste it here.",
+};
+/** Discord can post to a channel through a webhook, or have a bot send one person a direct message. The label and help follow the way chosen. */
+const DISCORD_WAYS = {
+  webhook: {
+    label: "Webhook address",
+    help: "In a Discord server you manage, open the channel's settings and go to Integrations, then Webhooks, then New Webhook. Click Copy Webhook URL and paste the address here.",
+    quiet: "The briefing still posts to the channel, but members get no push or desktop notification for it. On by default.",
+  },
+  dm: {
+    label: "Bot token",
+    help: "Create a bot in the Discord Developer Portal (New Application, then Bot, then Reset Token), add it to a server you are in, and paste its token here. For your user id, turn on Developer Mode in Discord, then right-click your name and choose Copy User ID. Your privacy settings for that server must allow direct messages from server members.",
+    quiet: "Sends the message without a notification sound or alert. On by default.",
+  },
 };
 
 /** What each model server is for, in the words the screen uses. */
@@ -651,7 +663,9 @@ class VzConnect extends HTMLElement {
       return el("label", { class: "field" }, el("span", { text: label }), input);
     };
     const secret = /** @type {HTMLInputElement} */ (el("input", { type: "password", autocomplete: "new-password", placeholder: channel.secretSet ? "Saved. Type to replace it." : "", spellcheck: false }));
-    const secretField = el("label", { class: "field" }, el("span", { text: SECRET_LABEL[id] }), secret);
+    const helpText = el("p", { class: "help", text: id === "discord" ? DISCORD_WAYS[c.mode === "dm" ? "dm" : "webhook"].help : HELP[id] });
+    const secretLabel = el("span", { text: id === "discord" ? DISCORD_WAYS[c.mode === "dm" ? "dm" : "webhook"].label : SECRET_LABEL[id] });
+    const secretField = el("label", { class: "field" }, secretLabel, secret);
     const enabled = this.switchRow(c.enabled, `Send the briefing to ${channel.label}`, "");
     /** @type {HTMLElement[]} */
     const body = [];
@@ -672,9 +686,24 @@ class VzConnect extends HTMLElement {
       fields["silent"] = /** @type {any} */ (silent.input);
       body.push(el("div", { class: "grid" }, secretField, field("chatId", "Chat id", c.chatId, { placeholder: "123456789" })), silent.row);
     } else {
-      const silent = this.switchRow(c.silent, "Post quietly", "No notification for people in the channel.");
+      const way = c.mode === "dm" ? "dm" : "webhook";
+      const mode = el("select", {}, el("option", { value: "webhook", text: "Post to a channel (webhook)" }), el("option", { value: "dm", text: "Send me a direct message (bot)" }));
+      /** @type {HTMLSelectElement} */ (mode).value = way;
+      fields["mode"] = /** @type {HTMLSelectElement} */ (mode);
+      const userId = field("userId", "Your Discord user id", c.userId ?? "", { placeholder: "123456789012345678", inputMode: "numeric" });
+      const silent = this.switchRow(c.silent, "Send quietly", DISCORD_WAYS[way].quiet);
       fields["silent"] = /** @type {any} */ (silent.input);
-      body.push(secretField, silent.row);
+      const quiet = silent.row.querySelector("small");
+      const showWay = (/** @type {"webhook" | "dm"} */ next) => {
+        secretLabel.textContent = DISCORD_WAYS[next].label;
+        secret.placeholder = channel.secretsSet?.[next] ? "Saved. Type to replace it." : "";
+        userId.hidden = next !== "dm";
+        helpText.textContent = DISCORD_WAYS[next].help;
+        if (quiet) quiet.textContent = DISCORD_WAYS[next].quiet;
+      };
+      mode.addEventListener("change", () => showWay(/** @type {HTMLSelectElement} */ (mode).value === "dm" ? "dm" : "webhook"));
+      userId.hidden = way !== "dm";
+      body.push(el("label", { class: "field" }, el("span", { text: "How Discord reaches you" }), mode), el("div", { class: "grid" }, secretField, userId), silent.row);
     }
     const note = el("p", { class: "last", role: "status" });
     const last = channel.last;
@@ -684,7 +713,8 @@ class VzConnect extends HTMLElement {
     }
     const save = /** @type {HTMLButtonElement} */ (el("button", { type: "button", class: "primary", text: "Save" }));
     const test = /** @type {HTMLButtonElement} */ (el("button", { type: "button", text: "Send a test" }));
-    const forget = el("button", { type: "button", class: "quiet danger", text: `Forget the ${(SECRET_LABEL[id] ?? "").toLowerCase()}`, hidden: !channel.secretSet });
+    const forgetLabel = id === "discord" ? DISCORD_WAYS[c.mode === "dm" ? "dm" : "webhook"].label : SECRET_LABEL[id] ?? "";
+    const forget = el("button", { type: "button", class: "quiet danger", text: `Forget the ${forgetLabel.toLowerCase()}`, hidden: !channel.secretSet });
     const busy = async (/** @type {() => Promise<void>} */ work) => {
       save.disabled = test.disabled = true;
       try {
@@ -733,7 +763,7 @@ class VzConnect extends HTMLElement {
       "section",
       { class: `card${c.enabled ? " on" : ""}` },
       el("div", { class: "top" }, el("div", { class: "name" }, el("h3", { text: channel.label }), state), enabled.row),
-      el("p", { class: "help", text: HELP[id] }),
+      helpText,
       ...body,
       el("div", { class: "actions" }, save, test, forget),
       note,

@@ -50,7 +50,7 @@ The Pipes screen builds new feeds from your existing ones with a form. A pipe re
 
 ### Delivery
 
-The Connect screen sends the daily briefing by email, Telegram or Discord. Email goes through Juhandu's own SMTP client (STARTTLS on port 587 by default, or TLS, or none for a local relay), and it will not send a password over an unencrypted link to anything but this machine. Items from private feeds are left out of every message by default; email can be told to include them, and Telegram and Discord never can. A failed send is retried up to three times. Only the latest daily briefing from the past 30 hours goes out automatically, and Send the latest briefing now sends one by hand.
+The Connect screen sends the daily briefing by email, Telegram or Discord. Email goes through Juhandu's own SMTP client (STARTTLS on port 587 by default, or TLS, or none for a local relay), and it will not send a password over an unencrypted link to anything but this machine. Discord delivery either posts to a channel through a webhook or has a Discord bot send you a direct message. Items from private feeds are left out of every message by default; email can be told to include them, and Telegram and Discord never can. A failed send is retried up to three times. Only the latest daily briefing from the past 30 hours goes out automatically, and Send the latest briefing now sends one by hand.
 
 ### AI assistants
 

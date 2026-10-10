@@ -53,5 +53,5 @@ Juhandu contacts only the sites you subscribe to and the services you configure.
 | Jev judge service, at api.typesafe.ai by default | When a Jev key is set and `jev` is in `JUHANDU_JUDGE` or `JUHANDU_JUDGE_SHADOW` | Judge questions with the item text they concern, public items only unless `jev` is named in `JUHANDU_PRIVATE_ALLOW`. |
 | Your SMTP server | When email delivery is on | The daily briefing, with private items left out unless you include them. |
 | Telegram, at api.telegram.org | When Telegram delivery is on | The daily briefing, never with private items. |
-| Discord, at your webhook's address | When Discord delivery is on | The daily briefing, never with private items. |
+| Discord, at your webhook's address, or at discord.com for a direct message | When Discord delivery is on | The daily briefing, never with private items. A direct message also sends the bot token and your Discord user id. |
 | Bitwarden Secrets Manager, through `bws` | When `BWS_ACCESS_TOKEN` is set | Lookups of secrets by name. |
