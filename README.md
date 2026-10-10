@@ -66,7 +66,7 @@ Every yes or no, pick-one and rank decision a model makes is logged in the datab
 
 ### The web app
 
-The screens are Briefing, Reading, Filtered out, Rules, Feeds, Pipes and Connect. On a narrow screen a tab bar runs along the bottom with the rest under More. The theme follows the system, and a button switches between system, light and dark. The app installs from the browser, and offline it shows the last items and briefings it loaded, marked as a saved copy.
+The screens are Briefing, Reading, Filtered out, Rules, Feeds, Pipes, and Connect. On a narrow screen a tab bar runs along the bottom with the rest under More. The theme follows the system, and a button switches between system, light and dark. The app installs from the browser, and offline it shows the last items and briefings it loaded, marked as a saved copy.
 
 ## Requirements
 

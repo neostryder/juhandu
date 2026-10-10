@@ -4,11 +4,13 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-09
+
 ### Added
 
 - [Visible] [Security] **The server listens on 127.0.0.1 by default and warns at start-up when it is set to listen anywhere else.** Juhandu has no sign-in, so the warning recommends a reverse proxy with authentication.
 - [Visible] [Security] **The API refuses requests from other sites, requests addressed to unexpected host names, and bodies that are not JSON.** Only this machine's own names and those in `JUHANDU_PUBLIC_HOST` are answered, which blocks web pages and DNS rebinding from using it through your browser, so a reverse proxy with a public name needs that name in `JUHANDU_PUBLIC_HOST`.
-- [Visible] [UI] **A web app with Briefing, Reading, Filtered out, Rules, Feeds, Pipes and Connect screens.** It follows the system's light or dark theme, shows a tab bar on phones, installs from the browser, and shows the last loaded items and briefings when offline.
+- [Visible] [UI] **A web app with seven screens: Briefing, Reading, Filtered out, Rules, Feeds, Pipes, and Connect.** It follows the system's light or dark theme, shows a tab bar on phones, installs from the browser, and shows the last loaded items and briefings when offline.
 - [Visible] **Feeds can be added by feed address, site address or YouTube address.** Juhandu reads RSS, Atom, RDF and JSON Feed, finds a site's feed on its own, and polls each feed every 30 minutes, backing off when a feed keeps failing.
 - [Visible] **Each feed has a tier, public or private, and can sit in a folder.** Private items go only to model endpoints on the same machine or to endpoints listed in `JUHANDU_PRIVATE_ALLOW`.
 - [Visible] [Security] **Feeds can use a private link, a user name and password, a request header or a session cookie to log in.** Logins are kept in the secret store and sent only to the site they were given for.
