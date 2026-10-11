@@ -4,6 +4,9 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Fixed
+- [Visible] [Compatibility] **A single private or restricted YouTube video no longer pauses Gemini for an hour.** When Google answers a video request with a 403, Juhandu checks the key with a plain request that names no video, and pauses Gemini only if that request is refused too; otherwise only that video is marked as one Gemini cannot read, and the next video goes to Gemini as usual. A 401 or an invalid-key 400 still pauses Gemini at once.
+
 ## [0.2.1] - 2026-10-10
 
 ### Fixed

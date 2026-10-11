@@ -103,6 +103,17 @@ export class GeminiUrlRung implements VideoRung {
     return names;
   }
 
+  /** Whether Google turns the key down for a request that names no video; an answer that cannot be had counts as no. */
+  private async keyRefused(key: string): Promise<boolean> {
+    try {
+      const response = await this.fetchImpl(`${API}/models?pageSize=1`, { headers: { "x-goog-api-key": key }, signal: AbortSignal.timeout(15_000) });
+      if (response.status === 401 || response.status === 403) return true;
+      return response.status === 400 && (await response.text()).includes("API_KEY_INVALID");
+    } catch {
+      return false;
+    }
+  }
+
   async read(target: VideoTarget): Promise<VideoReading> {
     const key = await this.key();
     if (!key) throw new RungSkipped("No Gemini key");
@@ -123,11 +134,13 @@ export class GeminiUrlRung implements VideoRung {
       }
       // A key that is not valid at all comes back as a 400 that names API_KEY_INVALID, and is as refused as a 401 or 403.
       const detail = response.status === 400 ? await response.text() : "";
-      if (response.status === 401 || response.status === 403 || detail.includes("API_KEY_INVALID")) {
+      // A 403 can also mean this one video is private or restricted, so it only counts against the key when the key fails a plain check too.
+      if (response.status === 401 || detail.includes("API_KEY_INVALID") || (response.status === 403 && (await this.keyRefused(key)))) {
         this.pausedUntil = this.clock() + KEY_COOLDOWN_MS;
         this.pausedKey = key;
         throw new RungSkipped(`Google refused the key (${response.status})`);
       }
+      if (response.status === 403) throw new RungFailed("Gemini is not allowed to read this video (private or restricted)");
       if (response.status === 404 || response.status === 429 || response.status >= 500) {
         failures.push(`${model}: ${response.status}`);
         continue;

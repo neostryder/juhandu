@@ -141,6 +141,12 @@ test("the Gemini rung reads by address, moves past a busy model, and pauses when
   await assert.rejects(rung.read(TARGET), RungFailed);
   busy = new Set();
   status = 403;
+  await assert.rejects(rung.read(TARGET), RungFailed, "a 403 on one video, with the key still good, fails that video only");
+  assert.equal(await rung.unavailable(), null, "one restricted video does not pause the key");
+  const refused = new GeminiUrlRung({ secrets: secretsWith({ gemini_api_key: "k-123456" }), env: {}, clock: () => now, fetchImpl: async (url: string) => (url.includes("/models?pageSize=1") ? new Response("no", { status: 403 }) : url.includes("/models?") ? Response.json({ models: [] }) : new Response("no", { status: 403 })) });
+  await assert.rejects(refused.read(TARGET), RungSkipped, "a 403 that the key check repeats is a refused key");
+  assert.match((await refused.unavailable()) ?? "", /Paused/);
+  status = 401;
   await assert.rejects(rung.read(TARGET), RungSkipped);
   assert.match((await rung.unavailable()) ?? "", /Paused/);
   now += 3_700_000;
