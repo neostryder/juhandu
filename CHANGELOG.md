@@ -16,6 +16,7 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 - [Visible] [UI] **Reading shows 40 items at a time and loads more while scrolling.** The next 40 arrive as the list nears the bottom, and "That is everything." marks the end. Rows outside the screen are not drawn, so long lists scroll smoothly.
 - [Visible] [UI] **The app opens faster.** The Rules, Feeds, Pipes, and Connect screens load when first opened, and they are fetched quietly in the background after start. The scripts the first screen needs are preloaded, and the web fonts no longer hold up the first paint.
 - [Visible] [UI] **Every screen fits a phone without sideways scrolling.** The browser's own pull-to-refresh and bounce no longer compete with the app's, the tap highlight is gone, and the Getting started links are easier to tap.
+- [Visible] [UI] **Juhandu has a new home-screen and browser-tab icon, a golden herald's horn with a burgundy banner.** The icon is a photographic image in 192 and 512 pixel sizes, with a separate maskable version that fits Android's circular and rounded crops, and it replaces the drawn seal icon and the script that generated it. A phone fetches a linked icon without the sign-in cookie, so behind an access proxy the old icon links got a login page back and the home screen showed a plain letter tile; the page now carries its small icons inside itself, so they always load.
 
 ### Fixed
 

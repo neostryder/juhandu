@@ -47,6 +47,10 @@ test("the page links the manifest and every script file it imports exists", () =
   // Behind an access proxy the browser asks for the manifest without the proxy's cookie unless told to send it, and gets a login page instead.
   assert.match(html, /rel="manifest" href="\/manifest\.webmanifest" crossorigin="use-credentials"/);
   assert.match(html, /name="viewport"[^>]*viewport-fit=cover/);
+  // A phone fetches a linked icon without the proxy's cookie and is sent to a login page, so the icons the page names travel inside it.
+  assert.match(html, /rel="apple-touch-icon" href="data:image\/jpeg;base64,/);
+  assert.match(html, /rel="icon" type="image\/png" href="data:image\/png;base64,/);
+  assert.ok(!/rel="(?:apple-touch-icon|icon)" href="\//.test(html), "no icon is linked by address");
   for (const name of ["app.js", "ui.js", "gestures.js", "briefing.js", "rules.js", "feeds.js", "pipes.js", "connect.js", "setup.js", "login.js"]) {
     for (const [, spec] of readFileSync(join(WEB, name), "utf8").matchAll(/from "\.\/([\w-]+\.js)"|import "\.\/([\w-]+\.js)"|import\("\.\/([\w-]+\.js)"\)/g).map((m) => [m[0], m[1] ?? m[2] ?? m[3]] as const)) {
       assert.ok(existsSync(join(WEB, spec!)), `${name} imports ./${spec} which is missing`);
@@ -73,7 +77,7 @@ test("the server sends the manifest, the service worker and the icons with the r
       "/manifest.webmanifest": "application/manifest+json",
       "/sw.js": "text/javascript",
       "/icons/icon-192.png": "image/png",
-      "/icons/icon.svg": "image/svg+xml",
+      "/icons/icon-maskable-512.png": "image/png",
       "/": "text/html",
     };
     for (const [path, type] of Object.entries(expected)) {
