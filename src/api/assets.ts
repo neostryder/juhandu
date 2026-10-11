@@ -33,10 +33,10 @@ export function versionOf(root: string): string {
   return hash.digest("hex").slice(0, 12);
 }
 
-/** Adds the version to every local script and stylesheet address in a page, and to every module import and version mark in a script. */
+/** Adds the version to every local script and stylesheet address in a page, and to every module import (static or import("...")) and version mark in a script. */
 export function stampVersion(text: string, ext: string, version: string): string {
   if (ext === ".html") return text.replace(/(\s(?:src|href)=")(\/[\w./-]+\.(?:js|css))"/g, `$1$2?v=${version}"`);
-  if (ext === ".js") return text.replace(/(\b(?:from|import)\s*["'])(\.\/[\w-]+\.js)(["'])/g, `$1$2?v=${version}$3`).replaceAll(VERSION_MARK, version);
+  if (ext === ".js") return text.replace(/(\b(?:from|import)\s*\(?\s*["'])(\.\/[\w-]+\.js)(["'])/g, `$1$2?v=${version}$3`).replaceAll(VERSION_MARK, version);
   return text;
 }
 

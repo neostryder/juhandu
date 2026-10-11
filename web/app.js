@@ -2,22 +2,51 @@
 // The shell: header, navigation (Briefing, Reading, Filtered out, Rules, Feeds, Pipes), theme and effects switches, the item lists,
 // the phone tab bar and the app install and offline pieces. Everything from feeds is shown as text, never as markup.
 import "./briefing.js";
-import "./rules.js";
-import "./feeds.js";
-import "./pipes.js";
-import "./connect.js";
 import "./setup.js";
+import { attachPull, attachSwipe } from "./gestures.js";
 import { LOGIN_STYLES, loginPicker } from "./login.js";
-import { api, applyEffects, applyTheme, baseStyles, currentTheme, effectsOn, el, initSettings, messageOf, SEAL, THEMES, voteControls } from "./ui.js";
+import { api, applyEffects, applyGestures, applyTheme, baseStyles, currentTheme, effectsOn, el, gesturesOn, initSettings, messageOf, SEAL, setBadge, THEMES, voteControls } from "./ui.js";
 
 initSettings();
+
+// The screens used now and then load the first time they are opened, and quietly in the background once the app is up, so the first paint
+// carries only what Briefing and Reading need and the other screens are still ready the moment they are asked for.
+const SCREENS = /** @type {Record<string, () => Promise<unknown>>} */ ({
+  rules: () => import("./rules.js"),
+  feeds: () => import("./feeds.js"),
+  pipes: () => import("./pipes.js"),
+  connect: () => import("./connect.js"),
+});
+window.addEventListener("load", () => {
+  const idle = /** @type {(run: () => void) => void} */ (window.requestIdleCallback ?? ((run) => setTimeout(run, 1500)));
+  idle(() => {
+    for (const load of Object.values(SCREENS)) load().catch(() => {});
+  });
+});
+
+// The fonts come after the first paint; the text shows in a fallback face and swaps when they arrive.
+const fonts = document.createElement("link");
+fonts.rel = "stylesheet";
+fonts.href = "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,700;1,700&family=Alegreya+Sans:wght@400;500;700&display=swap";
+document.head.append(fonts);
+
+/** Items fetched for the first screen and for each further page while scrolling. */
+const PAGE = 40;
+/** How often the open app looks for new items and a new unread count, in milliseconds. */
+const WATCH_MS = 60_000;
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     // The version in the address makes a new release register a new worker, even where a cache holds the old one.
-    navigator.serviceWorker.register("/sw.js?v=__JUHANDU_VERSION__").catch(() => {
-      // No offline copy, but everything else works.
-    });
+    navigator.serviceWorker
+      .register("/sw.js?v=__JUHANDU_VERSION__")
+      .then(async (registration) => {
+        // Lets an installed app refresh the count on its icon while closed, on browsers that allow it; the rest update it when opened.
+        await /** @type {any} */ (registration).periodicSync?.register("juhandu-badge", { minInterval: 60 * 60 * 1000 });
+      })
+      .catch(() => {
+        // No offline copy, but everything else works.
+      });
   });
 }
 
@@ -34,6 +63,7 @@ const ICONS = {
   light: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>',
   dark: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg>',
   effects: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>',
+  keys: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" stroke-linecap="round"/></svg>',
 };
 
 /** @param {string} svg */
@@ -58,16 +88,46 @@ class VzApp extends HTMLElement {
   /** @type {"briefing" | "reading" | "filtered" | "rules" | "feeds" | "pipes" | "connect"} */
   view = "briefing";
 
+  // The list on screen: the ids shown, where the next page starts, and a counter that lets a slow answer for an old list be dropped.
+  /** @type {Set<number>} */
+  known = new Set();
+  /** @type {number | null} */
+  cursor = null;
+  exhausted = false;
+  loadingMore = false;
+  loadRun = 0;
+  retryAt = 0;
+  /** @type {HTMLElement | null} */
+  current = null;
+  /** @type {IntersectionObserver | null} */
+  watcher = null;
+  /** @type {(() => void) | null} */
+  nearEnd = null;
+
   connectedCallback() {
     this.attachShadow({ mode: "open" });
+    this.takeShared();
     this.view = this.viewFromHash();
     this.render();
     window.addEventListener("hashchange", () => {
       this.view = this.viewFromHash();
       this.show();
     });
+    this.bindKeys();
+    this.bindPull();
+    this.watchNew();
     this.show();
   }
+
+  /** A link shared to the installed app arrives as ?url=, ?text= or ?title=; the address is put in the add box for the owner to confirm, and the query is dropped. */
+  takeShared() {
+    const query = new URLSearchParams(location.search);
+    if (!query.has("url") && !query.has("text") && !query.has("title")) return;
+    const found = [query.get("url"), query.get("text"), query.get("title")].map((value) => value?.match(/https?:\/\/\S+/)?.[0]).find(Boolean);
+    this.shared = found ?? "";
+    history.replaceState(null, "", `/#/reading/add`);
+  }
+  shared = "";
 
   viewFromHash() {
     const name = location.hash.replace(/^#\/?/, "").split("/")[0];
@@ -100,19 +160,23 @@ class VzApp extends HTMLElement {
     feedForm.hidden = this.view !== "reading";
     items.hidden = !showItems;
     this.$("#status").hidden = !showItems;
-    rules.hidden = this.view !== "rules";
-    feeds.hidden = this.view !== "feeds";
-    if (this.view === "feeds") /** @type {any} */ (feeds).load();
+    // A screen's code is fetched the first time it is opened (it was usually fetched in the background already), then it loads its data.
+    /** @param {string} name @param {HTMLElement} element @param {(element: any) => void} [ready] */
+    const open = (name, element, ready) => {
+      element.hidden = this.view !== name;
+      if (this.view === name) SCREENS[name]?.().then(() => ready?.(element)).catch(() => {});
+    };
+    open("rules", rules);
+    open("feeds", feeds, (element) => element.load());
     const pipes = this.$("vz-pipes");
-    pipes.hidden = this.view !== "pipes";
-    if (this.view === "pipes") /** @type {any} */ (pipes).load();
+    open("pipes", pipes, (element) => element.load());
     const connect = this.$("vz-connect");
-    connect.hidden = this.view !== "connect";
-    if (this.view === "connect") /** @type {any} */ (connect).load(location.hash.split("/")[2] ?? "");
+    open("connect", connect, (element) => element.load(location.hash.split("/")[2] ?? ""));
     const setup = this.$("vz-setup");
     setup.hidden = this.view !== "briefing" && this.view !== "reading";
     if (!setup.hidden) /** @type {any} */ (setup).load();
     if (showItems) this.refresh();
+    if (this.view === "reading" && location.hash.split("/")[2] === "add") queueMicrotask(() => this.$("#url").focus());
     this.loadAsk();
     for (const shown of [briefing, items, rules, feeds, pipes, connect]) {
       if (shown.hidden) continue;
@@ -182,17 +246,167 @@ class VzApp extends HTMLElement {
     return el("section", { class: "askbox", "aria-label": "A question for you" }, el("p", { class: "lead", text: "The AI is unsure about this one. Would you like it?" }), article, el("div", { class: "row" }, skip, stop));
   }
 
+  /** The first page of the list on screen. Further pages load as the end of the list comes into view. */
   async refresh() {
     const list = this.$("#items");
     const status = this.$("#status");
     const filtered = this.view === "filtered";
+    const run = ++this.loadRun;
     try {
-      const [{ items }, health] = await Promise.all([api(`/api/items?limit=100&view=${filtered ? "filtered" : "inbox"}`), api("/api/health")]);
-      status.textContent = filtered ? (items.length ? `${items.length} hidden by your rules. Restore anything that should not have been hidden.` : "Nothing has been filtered out.") : `${health.sources} sources, ${health.items} items, ${health.unread} unread`;
+      const [{ items }, health] = await Promise.all([api(`/api/items?limit=${PAGE}&view=${filtered ? "filtered" : "inbox"}`), api("/api/health")]);
+      if (run !== this.loadRun) return;
+      status.textContent = filtered ? (items.length ? "Hidden by your rules. Restore anything that should not have been hidden." : "Nothing has been filtered out.") : `${health.sources} sources, ${health.items} items, ${health.unread} unread`;
+      this.known = new Set(items.map((/** @type {any} */ item) => item.id));
+      this.cursor = items.length ? items[items.length - 1].id : null;
+      this.exhausted = items.length < PAGE;
+      this.current = null;
+      this.loadingMore = false;
       list.replaceChildren(...items.map((/** @type {any} */ item) => this.card(item, filtered)));
+      this.$("#newpill").hidden = true;
+      this.endOfList();
+      setBadge(health.unread);
     } catch (error) {
-      status.textContent = messageOf(error);
+      if (run === this.loadRun) status.textContent = messageOf(error);
     }
+  }
+
+  /** The next page, added below what is already shown; the page never jumps because nothing above it changes. */
+  async loadMore() {
+    if (this.loadingMore || this.exhausted || this.cursor === null || Date.now() < this.retryAt) return;
+    if (this.view !== "reading" && this.view !== "filtered") return;
+    const filtered = this.view === "filtered";
+    const run = this.loadRun;
+    this.loadingMore = true;
+    try {
+      const { items } = await api(`/api/items?limit=${PAGE}&before=${this.cursor}&view=${filtered ? "filtered" : "inbox"}`);
+      if (run !== this.loadRun) return;
+      const fresh = items.filter((/** @type {any} */ item) => !this.known.has(item.id));
+      for (const item of items) this.known.add(item.id);
+      if (items.length) this.cursor = items[items.length - 1].id;
+      this.exhausted = items.length < PAGE;
+      this.$("#items").append(...fresh.map((/** @type {any} */ item) => this.card(item, filtered)));
+    } catch {
+      // Offline or a hiccup: try again in a few seconds, when the end of the list is still in view.
+      this.retryAt = Date.now() + 5_000;
+    } finally {
+      if (run === this.loadRun) this.loadingMore = false;
+    }
+    this.endOfList();
+  }
+
+  /** Keeps the end-of-list marker honest and asks the observer to look again, so a page that did not fill the screen loads the next. */
+  endOfList() {
+    const end = this.$("#end");
+    const showing = this.view === "reading" || this.view === "filtered";
+    end.hidden = !showing;
+    end.textContent = this.exhausted ? (this.known.size ? "That is everything." : "") : "";
+    if (!this.watcher) {
+      this.watcher = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) this.loadMore();
+      }, { rootMargin: "1400px 0px" });
+    }
+    this.watcher.unobserve(end);
+    if (!this.exhausted) this.watcher.observe(end);
+    if (!this.nearEnd) {
+      // A browser that throttles observers (a background tab, a battery saver) still gets the next page from the scroll position.
+      this.nearEnd = () => {
+        if (!this.exhausted && end.getBoundingClientRect().top < innerHeight + 1400) this.loadMore();
+      };
+      addEventListener("scroll", this.nearEnd, { passive: true });
+    }
+  }
+
+  /** While the app is open: looks for newer items and a new unread count, and offers them in a pill instead of moving the list under the reader. */
+  watchNew() {
+    const tick = async () => {
+      if (document.hidden || !navigator.onLine) return;
+      try {
+        const health = await api("/api/health");
+        setBadge(health.unread);
+        if (this.view !== "reading") return;
+        const { items } = await api("/api/items?limit=20&view=inbox");
+        const fresh = items.filter((/** @type {any} */ item) => !this.known.has(item.id)).length;
+        const pill = /** @type {HTMLButtonElement} */ (this.$("#newpill"));
+        pill.hidden = fresh === 0;
+        if (fresh > 0) pill.textContent = fresh >= 20 ? "20 or more new. Show them" : `${fresh} new. Show ${fresh === 1 ? "it" : "them"}`;
+      } catch {
+        // The offline note already says so.
+      }
+    };
+    setInterval(tick, WATCH_MS);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) tick();
+    });
+  }
+
+  /** Pull down from the top of Reading, Filtered or Briefing to refresh, on a phone. */
+  bindPull() {
+    const pull = this.$("#pull");
+    attachPull({
+      enabled: () => gesturesOn() && (this.view === "reading" || this.view === "filtered" || this.view === "briefing"),
+      refresh: async () => {
+        if (this.view === "briefing") await /** @type {any} */ (this.$("vz-briefing")).load();
+        else await this.refresh();
+      },
+      show: (distance, ready, busy) => {
+        pull.style.height = `${distance * 0.6}px`;
+        pull.textContent = busy ? "Refreshing..." : distance === 0 ? "" : ready ? "Let go to refresh" : "Pull to refresh";
+      },
+    });
+  }
+
+  /** j and k move through the cards, l and d vote, o opens, r refreshes, when the gestures switch is on and no box has the keyboard. */
+  bindKeys() {
+    document.addEventListener("keydown", (event) => {
+      if (!gesturesOn() || event.ctrlKey || event.metaKey || event.altKey || (this.view !== "reading" && this.view !== "filtered")) return;
+      const origin = /** @type {HTMLElement | undefined} */ (event.composedPath()[0]);
+      if (origin?.closest?.("input, textarea, select, dialog") || origin?.isContentEditable) return;
+      const cards = this.all("#items > article");
+      if (!cards.length) return;
+      const at = this.current ? cards.indexOf(this.current) : -1;
+      /** @param {HTMLElement | undefined} next */
+      const go = (next) => {
+        if (!next) return;
+        this.current?.classList.remove("cur");
+        this.current = next;
+        next.classList.add("cur");
+        next.tabIndex = -1;
+        next.focus({ preventScroll: true });
+        next.scrollIntoView({ block: "center", behavior: effectsOn() ? "smooth" : "auto" });
+      };
+      const press = (/** @type {string} */ which) => this.vote(this.current, which);
+      switch (event.key) {
+        case "j":
+          go(cards[Math.min(at + 1, cards.length - 1)]);
+          break;
+        case "k":
+          go(cards[Math.max(at - 1, 0)]);
+          break;
+        case "l":
+          press("like");
+          break;
+        case "d":
+          press("dislike");
+          break;
+        case "o": {
+          const link = /** @type {HTMLAnchorElement | null} */ (this.current?.querySelector("a[href^='http']"));
+          if (link) window.open(link.href, "_blank", "noopener,noreferrer");
+          break;
+        }
+        case "r":
+          this.refresh();
+          break;
+        default:
+          return;
+      }
+      event.preventDefault();
+    });
+  }
+
+  /** Presses a card's Like or Dislike unless that vote is already in; a second press would take it back. @param {HTMLElement | null} card @param {string} which */
+  vote(card, which) {
+    const button = /** @type {HTMLButtonElement | null | undefined} */ (card?.querySelector(`.vote-btn.${which}`));
+    if (button && button.getAttribute("aria-pressed") !== "true") button.click();
   }
 
   /** @param {any} item @param {boolean} filtered @param {((vote: number) => void) | null} [onAsk] set when this card is the borderline question */
@@ -223,6 +437,8 @@ class VzApp extends HTMLElement {
         },
       });
       card.append(el("p", { class: "why muted", text: why.length ? `Hidden by: ${why.join("; ")}` : "Hidden by the taste score." }), restore);
+    } else {
+      attachSwipe(card, (vote) => this.vote(card, vote > 0 ? "like" : "dislike"), gesturesOn);
     }
     return card;
   }
@@ -315,6 +531,16 @@ class VzApp extends HTMLElement {
         article details.video summary { cursor: pointer; color: var(--muted); min-height: 32px; display: flex; align-items: center; }
         article details.video .reading { white-space: pre-wrap; font-size: 15px; }
         article button { margin-top: 10px; }
+        #items > article { content-visibility: auto; contain-intrinsic-size: auto 190px; }
+        .fx article { transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease; }
+        article.swiping { transition: none !important; }
+        article.cur { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-dim); outline: none; }
+        article[data-swipe] { border-color: var(--accent); }
+        article[data-swipe="disliking"], article[data-swipe="dislike"] { border-color: var(--down); }
+        article[data-swipe="like"], article[data-swipe="dislike"] { box-shadow: 0 0 0 3px var(--glow); }
+        #pull { height: 0; overflow: hidden; display: grid; align-items: center; text-align: center; color: var(--muted); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+        #newpill { position: sticky; top: 8px; z-index: 4; display: block; margin: 8px auto; box-shadow: 0 6px 24px var(--glow); }
+        #end { text-align: center; color: var(--muted); font-style: italic; padding: 22px 0 8px; }
         .askbox { border: 1px solid var(--accent-dim); border-left: 4px solid var(--accent); border-radius: 6px; padding: 12px 18px 8px; margin: 10px 0 16px; background: var(--bg-raised); }
         .askbox .lead { margin: 0; font-family: var(--font-display); font-style: italic; font-size: 20px; color: var(--accent); }
         .askbox article { background: transparent; border: 0; padding: 4px 0 0; margin-top: 4px; }
@@ -356,6 +582,7 @@ class VzApp extends HTMLElement {
         }
       </style>
       <div id="frame">
+        <div id="pull" aria-hidden="true"></div>
         <header><div class="brand"><span class="seal" id="seal"></span><h1>Juhandu</h1></div><div class="tools" id="tools"></div></header>
         <div class="rule-double"></div>
         <nav id="nav" aria-label="Sections"></nav>
@@ -363,8 +590,10 @@ class VzApp extends HTMLElement {
         <vz-setup hidden></vz-setup>
         <form id="add"><input id="url" type="url" placeholder="Paste a feed, a site or a YouTube channel" aria-label="Feed address" required><button class="primary" type="submit">Add</button><div id="login" class="login-row"></div></form>
         <div id="status" role="status"></div>
+        <button id="newpill" class="primary" type="button" hidden></button>
         <div id="ask" hidden></div>
         <div id="items"></div>
+        <div id="end" hidden></div>
         <vz-briefing hidden></vz-briefing>
         <vz-rules hidden></vz-rules>
         <vz-feeds hidden></vz-feeds>
@@ -420,10 +649,25 @@ class VzApp extends HTMLElement {
       syncEffects();
     });
     syncEffects();
-    this.$("#tools").append(effects, theme);
+    const keys = el("button", { type: "button", "aria-label": "Swipe and keyboard shortcuts" }, icon(ICONS.keys));
+    const syncKeys = () => {
+      keys.setAttribute("aria-pressed", String(gesturesOn()));
+      keys.title = gesturesOn() ? "Swipe, pull and keys are on: swipe a card right to like and left to dislike, pull down to refresh; j and k move, l likes, d dislikes, o opens, r refreshes. Click to turn them off." : "Swipe, pull and keys are off. Click to turn them on.";
+    };
+    keys.addEventListener("click", () => {
+      applyGestures(!gesturesOn());
+      syncKeys();
+    });
+    syncKeys();
+    this.$("#newpill").addEventListener("click", () => {
+      this.refresh();
+      window.scrollTo({ top: 0, behavior: effectsOn() ? "smooth" : "auto" });
+    });
+    this.$("#tools").append(keys, effects, theme);
 
     const form = /** @type {HTMLFormElement} */ (this.$("#add"));
     const input = /** @type {HTMLInputElement} */ (this.$("#url"));
+    if (this.shared) input.value = this.shared;
     const status = this.$("#status");
     const picker = loginPicker({ idPrefix: "add", onKind: (kind) => {
       input.required = kind !== "url";

@@ -15,7 +15,14 @@
     { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ],
   "shortcuts": [
+    { "name": "Briefing", "url": "/#/briefing" },
     { "name": "Reading", "url": "/#/reading" },
-    { "name": "Feeds", "url": "/#/feeds" }
-  ]
+    { "name": "Filtered out", "url": "/#/filtered" },
+    { "name": "Add a feed", "short_name": "Add feed", "url": "/#/reading/add" }
+  ],
+  "share_target": {
+    "action": "/",
+    "method": "GET",
+    "params": { "title": "title", "text": "text", "url": "url" }
+  }
 }

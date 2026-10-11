@@ -16,7 +16,7 @@ const STYLES = `
   li.done .what { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line-strong); }
   .what { flex: 1; }
   .what small { display: block; color: var(--muted); font-size: 15px; }
-  a { color: var(--accent); }
+  a { color: var(--accent); display: inline-block; padding: 10px 6px; margin: -10px -6px; }
 `;
 
 /** @type {{ id: "feed" | "model" | "video" | "delivery", label: string, hint: string, href: string, link: string }[]} */

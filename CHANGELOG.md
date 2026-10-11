@@ -4,8 +4,24 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Added
+
+- [Visible] [UI] **Reading can be triaged by swipe or keyboard.** On a touch screen, swiping an item right Likes it and swiping left Dislikes it, and a swipe starts only on the card body, never on its buttons or links. On a keyboard, j and k move between items, l likes, d dislikes, o opens, and r refreshes. The shortcuts button in the Reading toolbar turns both the keys and the swipes off or back on.
+- [Visible] [UI] **Pulling down at the top of Reading on a phone refreshes it.** While the app is open it also checks for new items every minute and shows a "N new. Show them" pill, so the list stays put under the item being read.
+- [Visible] [UI] **The home-screen icon shows the unread count and has shortcuts.** On systems that support app badges, the installed icon carries the number of unread items. A long press on it opens Briefing, Reading, Filtered out, or Add a feed.
+- [Visible] [UI] **Juhandu appears in the phone's share sheet.** Sharing a link to it opens Add a feed with the address already filled in.
+
+### Changed
+
+- [Visible] [UI] **Reading shows 40 items at a time and loads more while scrolling.** The next 40 arrive as the list nears the bottom, and "That is everything." marks the end. Rows outside the screen are not drawn, so long lists scroll smoothly.
+- [Visible] [UI] **The app opens faster.** The Rules, Feeds, Pipes, and Connect screens load when first opened, and they are fetched quietly in the background after start. The scripts the first screen needs are preloaded, and the web fonts no longer hold up the first paint.
+- [Visible] [UI] **Every screen fits a phone without sideways scrolling.** The browser's own pull-to-refresh and bounce no longer compete with the app's, the tap highlight is gone, and the Getting started links are easier to tap.
+
 ### Fixed
+
 - [Visible] [Compatibility] **A single private or restricted YouTube video no longer pauses Gemini for an hour.** When Google answers a video request with a 403, Juhandu checks the key with a plain request that names no video, and pauses Gemini only if that request is refused too; otherwise only that video is marked as one Gemini cannot read, and the next video goes to Gemini as usual. A 401 or an invalid-key 400 still pauses Gemini at once.
+- [Visible] [Compatibility] **Screens loaded on demand now carry the version in their address.** Before this, an upgrade could leave a cache serving the old copy of a screen.
+- [Visible] [Compatibility] **The home-screen manifest is now requested with the sign-in cookie.** Behind an access proxy, the phone now finds the app's name and icon instead of a login page.
 
 ## [0.2.1] - 2026-10-10
 

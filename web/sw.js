@@ -10,7 +10,7 @@ const sw = self;
 const VERSION = "__JUHANDU_VERSION__";
 const SHELL = `juhandu-shell-${VERSION}`;
 const DATA = "juhandu-data-v1";
-const FILES = ["/", "/app.js", "/ui.js", "/briefing.js", "/rules.js", "/feeds.js", "/pipes.js", "/connect.js", "/setup.js", "/login.js", "/tokens.css", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
+const FILES = ["/", "/app.js", "/ui.js", "/gestures.js", "/briefing.js", "/rules.js", "/feeds.js", "/pipes.js", "/connect.js", "/setup.js", "/login.js", "/tokens.css", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
 /** The shell files under the addresses the page asks for. */
 const VERSIONED = FILES.map((file) => (/\.(js|css)$/.test(file) ? `${file}?v=${VERSION}` : file));
 const READABLE =/^\/api\/(items|health|briefings(\/\d+)?)$/;
@@ -47,12 +47,30 @@ sw.addEventListener("fetch", (/** @type {any} */ event) => {
   event.respondWith(staleWhileRevalidate(request));
 });
 
+// Where the browser allows it, an installed app wakes now and then to refresh the unread count on its icon.
+sw.addEventListener("periodicsync", (/** @type {any} */ event) => {
+  if (event.tag === "juhandu-badge") event.waitUntil(refreshBadge());
+});
+
+async function refreshBadge() {
+  try {
+    const response = await fetch("/api/health");
+    if (!response.ok) return;
+    const { unread } = await response.json();
+    if (unread > 0) await sw.navigator.setAppBadge?.(unread);
+    else await sw.navigator.clearAppBadge?.();
+  } catch {
+    // Offline, or signed out: the count stays as it was.
+  }
+}
+
 /** @param {Request} request */
 async function networkFirst(request) {
   const cache = await caches.open(DATA);
   try {
     const response = await fetch(request);
-    if (response.ok) await cache.put(request, response.clone());
+    // Only the first page of a list is kept for offline; the pages further down would pile up one copy per place the reader scrolled to.
+    if (response.ok && !new URL(request.url).searchParams.has("before")) await cache.put(request, response.clone());
     return response;
   } catch {
     const hit = await cache.match(request);

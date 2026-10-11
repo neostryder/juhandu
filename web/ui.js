@@ -148,6 +148,27 @@ export function applyEffects(on) {
   write("juhandu.effects", on ? "on" : "off");
 }
 
+/** Swipe to vote, pull to refresh and the keyboard keys: on unless the person turned them off. */
+export function gesturesOn() {
+  return read("juhandu.gestures") !== "off";
+}
+
+/** @param {boolean} on */
+export function applyGestures(on) {
+  write("juhandu.gestures", on ? "on" : "off");
+}
+
+/** The count on the installed app's icon, where the device has one; a device without it ignores the call. @param {number} count */
+export function setBadge(count) {
+  const nav = /** @type {any} */ (navigator);
+  try {
+    const done = count > 0 ? nav.setAppBadge?.(count) : nav.clearAppBadge?.();
+    done?.catch?.(() => {});
+  } catch {
+    // No badge on this device.
+  }
+}
+
 /** Colours the phone's browser bar to match the page. */
 export function syncThemeColor() {
   const color = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();

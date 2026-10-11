@@ -37,14 +37,18 @@ test("the manifest is valid and every icon it names exists", () => {
     sizes.add(icon.sizes);
   }
   assert.ok(sizes.has("192x192") && sizes.has("512x512"), "an installable app needs a 192 and a 512 icon");
+  assert.ok(manifest.shortcuts.length >= 4, "the home-screen icon offers its long-press shortcuts");
+  assert.equal(manifest.share_target.method, "GET", "the app appears in the phone's share sheet");
+  for (const shortcut of manifest.shortcuts) assert.ok(String(shortcut.url).startsWith(manifest.scope), `${shortcut.name} stays inside the app's scope`);
 });
 
 test("the page links the manifest and every script file it imports exists", () => {
   const html = readFileSync(join(WEB, "index.html"), "utf8");
-  assert.match(html, /rel="manifest" href="\/manifest\.webmanifest"/);
+  // Behind an access proxy the browser asks for the manifest without the proxy's cookie unless told to send it, and gets a login page instead.
+  assert.match(html, /rel="manifest" href="\/manifest\.webmanifest" crossorigin="use-credentials"/);
   assert.match(html, /name="viewport"[^>]*viewport-fit=cover/);
-  for (const name of ["app.js", "ui.js", "briefing.js", "rules.js", "feeds.js", "pipes.js", "connect.js", "setup.js", "login.js"]) {
-    for (const [, spec] of readFileSync(join(WEB, name), "utf8").matchAll(/from "\.\/([\w-]+\.js)"|import "\.\/([\w-]+\.js)"/g).map((m) => [m[0], m[1] ?? m[2]] as const)) {
+  for (const name of ["app.js", "ui.js", "gestures.js", "briefing.js", "rules.js", "feeds.js", "pipes.js", "connect.js", "setup.js", "login.js"]) {
+    for (const [, spec] of readFileSync(join(WEB, name), "utf8").matchAll(/from "\.\/([\w-]+\.js)"|import "\.\/([\w-]+\.js)"|import\("\.\/([\w-]+\.js)"\)/g).map((m) => [m[0], m[1] ?? m[2] ?? m[3]] as const)) {
       assert.ok(existsSync(join(WEB, spec!)), `${name} imports ./${spec} which is missing`);
     }
   }
@@ -145,6 +149,8 @@ test("the version changes when any file of the app changes, and stamping leaves 
 
     assert.equal(stampVersion('<script type="module" src="/app.js"></script><link rel="icon" href="/icons/icon.svg">', ".html", "v1"), '<script type="module" src="/app.js?v=v1"></script><link rel="icon" href="/icons/icon.svg">');
     assert.equal(stampVersion(`import "./a.js";\nimport { b } from "./b.js";\nconst url = "https://example.com/x.js";\nconst v = "${VERSION_MARK}";`, ".js", "v1"), `import "./a.js?v=v1";\nimport { b } from "./b.js?v=v1";\nconst url = "https://example.com/x.js";\nconst v = "v1";`);
+    assert.equal(stampVersion(`const load = () => import("./rules.js");\nconst other = () => import( './feeds.js' );`, ".js", "v1"), `const load = () => import("./rules.js?v=v1");\nconst other = () => import( './feeds.js?v=v1' );`, "a module loaded on demand carries the version too");
+    assert.equal(stampVersion('<link rel="modulepreload" href="/ui.js">', ".html", "v1"), '<link rel="modulepreload" href="/ui.js?v=v1">');
   } finally {
     rmSync(folder, { recursive: true, force: true });
   }
