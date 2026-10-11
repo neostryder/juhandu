@@ -10,8 +10,6 @@ What it produces stays a draft until the maintainer has read it. The maintainer 
 
 Secrets, credentials and private data are never given to an AI service as development context. Any dependency or API a model suggests is checked independently before use, since invented APIs and needless packages are common in model-written code. Security review also watches for unsafe defaults, and for code that does what the prompt asked while breaking a rule the prompt never mentioned.
 
-The app icon is an image made with ChatGPT, OpenAI's assistant, then cropped and resized by hand into each icon size the app ships.
-
 ## What has to pass
 
 Two commands gate every change, and both must pass. `npm test` runs every `*.test.ts` file under `test/` with Node's built-in test runner. `npm run typecheck` runs the TypeScript compiler in strict mode over the server code in `src/`, the browser code in `web/`, the scripts and the tests.
