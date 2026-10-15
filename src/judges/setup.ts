@@ -91,7 +91,7 @@ export function buildJudge(env: Env, deps: JudgeSetupDeps): JudgeSetup {
       return null;
     }
     const baseUrl = env["JUHANDU_JEV_URL"] ?? "https://api.typesafe.ai";
-    return new SystemOneJudge({ name: "jev", endpoints: [{ name: "jev", baseUrl, model: env["JUHANDU_JEV_MODEL"] ?? "jev-latest", local: false, apiKey }], gate, calibrated: true, onJudgment, ...fetchOption });
+    return new SystemOneJudge({ name: "jev", endpoints: [{ name: "jev", baseUrl, model: env["JUHANDU_JEV_MODEL"] ?? "jev-preview", local: false, apiKey }], gate, calibrated: true, onJudgment, ...fetchOption });
   };
 
   const usedJudges = acting.map((b) => make(b, "acted")).filter((j): j is Judge => j !== null);

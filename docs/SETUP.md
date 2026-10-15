@@ -162,7 +162,7 @@ Judges:
 | `JUHANDU_TYPED_LANE_MODEL` | none | A template such as `adapter-{lane}` that names a model for each kind of decision. Ignored when `JUHANDU_TYPED_MODEL` is set. |
 | `JUHANDU_TYPED_ACTS` | off | Set to `1` to let a typed server's answers count; otherwise it only shadows. |
 | `JUHANDU_JEV_URL` | `https://api.typesafe.ai` | The Jev service. |
-| `JUHANDU_JEV_MODEL` | `jev-latest` | The Jev model. |
+| `JUHANDU_JEV_MODEL` | `jev-preview` | The Jev model. |
 | `JUHANDU_JEV_KEY` | none | The Jev key. `TYPESAFE_API_KEY` and `JEV_API_KEY` are read too. |
 | `JUHANDU_JEV_KEY_FILE` | none | A file holding the Jev key. |
 

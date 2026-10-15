@@ -160,9 +160,9 @@ test("A typed server is asked for the lane's own model, Jev for its own, and an 
   const typed = new SystemOneJudge({ name: "typed", endpoints: [{ name: "typed", baseUrl: "http://typed.test", model: "base-model", local: true }], gate: new EgressGate(), calibrated: false, modelFor: (lane: string) => laneModel("adapter-{lane}", lane), fetch: fetchImpl });
   await typed.yesNo(q, { tier: "public", priority: "background", lane: "same_story" });
   await typed.yesNo(q, { tier: "public", priority: "background" });
-  const jev = new SystemOneJudge({ name: "jev", endpoints: [{ name: "jev", baseUrl: "http://jev.test", model: "jev-latest", local: false, apiKey: "k" }], gate: new EgressGate(), calibrated: true, fetch: fetchImpl });
+  const jev = new SystemOneJudge({ name: "jev", endpoints: [{ name: "jev", baseUrl: "http://jev.test", model: "jev-preview", local: false, apiKey: "k" }], gate: new EgressGate(), calibrated: true, fetch: fetchImpl });
   await jev.yesNo(q, { tier: "public", priority: "background", lane: "same_story" });
-  assert.deepEqual(seen, ["adapter-same_story", "base-model", "jev-latest"]);
+  assert.deepEqual(seen, ["adapter-same_story", "base-model", "jev-preview"]);
   assert.equal(laneModel("adapter-{lane}", "wants"), "adapter-wants");
 
   const logged: JudgmentEntry[] = [];

@@ -40,7 +40,7 @@ const YES_NO: YesNoQuestion = { question: "Do these two items report the same st
 const PICK: PickQuestion = { question: "Which item is about OpenAI?", options: [{ id: "a", facts: { title: "OpenAI news" } }, { id: "b", facts: { title: "Quest discount" } }, { id: "c", facts: { title: "Rust trait solver" } }] };
 
 function typedEndpoints(...names: string[]): SystemOneEndpoint[] {
-  return names.map((name) => ({ name, baseUrl: `http://${name}.test`, model: "jev-latest", local: true }));
+  return names.map((name) => ({ name, baseUrl: `http://${name}.test`, model: "jev-preview", local: true }));
 }
 
 function judgeFor(handler: Handler, options: { endpoints?: SystemOneEndpoint[]; calibrated?: boolean; log?: JudgmentEntry[]; calls?: Call[]; name?: string } = {}): SystemOneJudge {
@@ -77,8 +77,8 @@ test("yes/no asks the question and its inverse in one request and averages the t
 
 test("a hosted endpoint gets its key as a bearer token and its answers count as calibrated", async () => {
   const calls: Call[] = [];
-  const endpoint: SystemOneEndpoint = { name: "jev", baseUrl: "https://api.typesafe.ai/v1/systemone", model: "jev-latest", local: false, apiKey: "test-key" };
-  const judge = judgeFor(() => ok({ answer: noul(0.05), inverse: noul(0.97) }, "jev-latest"), { endpoints: [endpoint], calibrated: true, calls, name: "jev" });
+  const endpoint: SystemOneEndpoint = { name: "jev", baseUrl: "https://api.typesafe.ai/v1/systemone", model: "jev-preview", local: false, apiKey: "test-key" };
+  const judge = judgeFor(() => ok({ answer: noul(0.05), inverse: noul(0.97) }, "jev-preview"), { endpoints: [endpoint], calibrated: true, calls, name: "jev" });
   const verdict = await judge.yesNo(YES_NO, CTX);
   assert.equal(calls[0]!.url, "https://api.typesafe.ai/v1/systemone", "a full URL is not extended twice");
   assert.equal(calls[0]!.headers["authorization"], "Bearer test-key");
@@ -145,7 +145,7 @@ test("a rejected request is not retried elsewhere, and a reply without answers i
 
 test("private data never reaches a hosted endpoint unless it is allowed", async () => {
   const calls: Call[] = [];
-  const hosted: SystemOneEndpoint = { name: "jev", baseUrl: "https://jev.test", model: "jev-latest", local: false, apiKey: "k" };
+  const hosted: SystemOneEndpoint = { name: "jev", baseUrl: "https://jev.test", model: "jev-preview", local: false, apiKey: "k" };
   const judge = judgeFor(() => ok({ answer: noul(0.9), inverse: noul(0.1) }), { endpoints: [hosted], calls, name: "jev" });
   await assert.rejects(judge.yesNo(YES_NO, { tier: "private", priority: "background" }), NoEndpointError);
   assert.equal(calls.length, 0);
