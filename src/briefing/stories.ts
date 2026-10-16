@@ -65,7 +65,7 @@ export class StoryBuilder {
     this.judge = deps.judge;
     this.tag = deps.tag;
     this.clock = deps.clock ?? (() => new Date());
-    this.options = { similarity: 0.8, minProbability: 0.75, windowHours: 72, lookbackDays: 7, maxChecks: 40, ...deps.options };
+    this.options = { similarity: 0.82, minProbability: 0.75, windowHours: 72, lookbackDays: 7, maxChecks: 40, ...deps.options };
   }
 
   /** Looks for matches among items not yet checked. Each unchecked item is compared with the closest items from other sources inside the window. */

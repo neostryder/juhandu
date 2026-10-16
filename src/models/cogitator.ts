@@ -79,6 +79,11 @@ function reachableBase(doc: Discovery, gatewayUrl: string): Discovery {
   return doc;
 }
 
+/** A chain entry or served-model header can name the machine that answered ("model@bilbo"). The same model on another machine gives the same vectors, so only the model counts. */
+function baseModel(model: string): string {
+  return model.replace(/@[\w.-]+$/, "");
+}
+
 export class CogitatorProvider implements ModelProvider {
   readonly name = "cogitator";
   readonly capabilities: Capabilities = { embed: true, chat: true, decide: false, transcribe: false };
@@ -126,6 +131,7 @@ export class CogitatorProvider implements ModelProvider {
     const names = new Set(doc.roles.map((r) => r.name));
     const wanted = this.options.roles?.[job] ?? job;
     if (names.has(wanted)) return wanted;
+    if (job === "embed" && names.has("embed")) return "embed";
     if ((job === "summarize" || job === "judge") && names.has("describe")) return "describe";
     throw new NoEndpointError(`Cogitator has no role for ${job}`);
   }
@@ -134,7 +140,8 @@ export class CogitatorProvider implements ModelProvider {
     try {
       const doc = await this.loadDiscovery();
       const role = this.roleFor(doc, "embed");
-      return doc.roles.find((r) => r.name === role)?.chain[0] ?? null;
+      const first = doc.roles.find((r) => r.name === role)?.chain[0];
+      return first ? baseModel(first) : null;
     } catch (error) {
       if (error instanceof NoEndpointError) return null;
       throw error;
@@ -182,9 +189,9 @@ export class CogitatorProvider implements ModelProvider {
   async embed(request: EmbedRequest): Promise<EmbedResult> {
     const doc = await this.loadDiscovery();
     const role = this.roleFor(doc, "embed");
-    const expected = doc.roles.find((r) => r.name === role)?.chain[0] ?? role;
+    const expected = baseModel(doc.roles.find((r) => r.name === role)?.chain[0] ?? role);
     const { response, model } = await this.send(doc, "/embeddings", { model: role, input: request.texts }, request.priority);
-    const served = model ?? expected;
+    const served = model ? baseModel(model) : expected;
     if (served !== expected) throw new ModelMismatchError(expected, served);
     const vectors = parseEmbeddings("cogitator", (await response.json()) as { data?: { index?: number; embedding?: number[] }[] }, request.texts.length);
     return { vectors, model: served };

@@ -42,7 +42,7 @@ Embeddings are stored with a name, `JUHANDU_EMBED_TAG`, and embeddings with diff
 
 Cogitator is a local model host that Juhandu can use in place of separate endpoints. It is optional, it is not publicly available yet, and nothing in Juhandu needs it: any OpenAI-style embedding and chat endpoint does the same work.
 
-Juhandu finds Cogitator through a discovery file, a JSON document with `schema` set to `1`, an `openai_base` URL, a `health` URL, and a list of `roles`, each with a `name` and a `chain` of model names. Juhandu uses the roles named `embed`, `summarize` and `judge`, and falls back to `describe` for summaries and judging. It reads the file from `JUHANDU_COGITATOR_DISCOVERY`, by default `%LOCALAPPDATA%\Cogitator\data\discovery.json` on Windows, or fetches it from `/v1/cogitator/discovery` under `JUHANDU_COGITATOR_URL`. Requests carry one of two bearer keys: the interactive key for work you are waiting on and the background key for the rest. They come from the secrets `cogitator/interactive` and `cogitator/background`, or from the files named by `JUHANDU_COGITATOR_KEY_FILE` and `JUHANDU_COGITATOR_BACKGROUND_KEY_FILE`.
+Juhandu finds Cogitator through a discovery file, a JSON document with `schema` set to `1`, an `openai_base` URL, a `health` URL, and a list of `roles`, each with a `name` and a `chain` of model names. Juhandu uses the roles named `embed-gemma2`, `summarize`, and `judge`, and falls back to `embed` for embeddings and to `describe` for summaries and judging. It reads the file from `JUHANDU_COGITATOR_DISCOVERY`, by default `%LOCALAPPDATA%\Cogitator\data\discovery.json` on Windows, or fetches it from `/v1/cogitator/discovery` under `JUHANDU_COGITATOR_URL`. Requests carry one of two bearer keys: the interactive key for work you are waiting on and the background key for the rest. They come from the secrets `cogitator/interactive` and `cogitator/background`, or from the files named by `JUHANDU_COGITATOR_KEY_FILE` and `JUHANDU_COGITATOR_BACKGROUND_KEY_FILE`.
 
 Cogitator is always treated as being on this machine, so it may receive private items.
 
@@ -132,7 +132,7 @@ Server and briefing:
 | `JUHANDU_PORT` | `8787` | The port. `PORT` is read when this is unset. |
 | `JUHANDU_DATA` | `data` in the project | The folder for the database and the `secrets` folder. |
 | `JUHANDU_BRIEFING_HOUR` | `7` | The hour, in server local time, after which the daily briefing is built. |
-| `JUHANDU_MERGE_SIMILARITY` | `0.8` | How similar two items must be before the judge is asked whether they are the same story. |
+| `JUHANDU_MERGE_SIMILARITY` | `0.82` | How similar two items must be before the judge is asked whether they are the same story. |
 | `JUHANDU_PUBLIC_HOST` | none | Comma-separated host names, besides this machine's own, that the web app and the API answer to. Set it to the public name when Juhandu runs behind a reverse proxy; without it, every API request through that name is refused. |
 | `JUHANDU_PRIVATE_ALLOW` | none | Comma-separated endpoint names that may receive private items. |
 
@@ -145,7 +145,9 @@ Model adapter and embeddings:
 | `JUHANDU_CHAT_URL`, `_KEY`, `_MODEL`, `_LOCAL`, `_EXTRA_BODY` | none | The chat endpoint. |
 | `JUHANDU_EMBED_TAG` | `nomic-embed-text-v1.5-q8_0` | The name stored with each embedding. |
 | `JUHANDU_EMBED_DIMS` | the model's own | Keeps only this many dimensions of each embedding. |
-| `JUHANDU_EMBED_DOC_PREFIX` | `clustering: ` | Text put in front of each item before it is embedded. |
+| `JUHANDU_EMBED_DOC_PREFIX` | the model's own | Text put in front of each item before it is embedded. |
+| `JUHANDU_EMBED_QUERY_PREFIX` | the model's own | Text put in front of each rule sentence and example before it is embedded. |
+| `JUHANDU_COGITATOR_EMBED_ROLE` | `embed-gemma2` | The Cogitator role that embeds text. |
 | `JUHANDU_COGITATOR_URL` | none | Cogitator's address, when its discovery file is not on this machine. |
 | `JUHANDU_COGITATOR_DISCOVERY` | `%LOCALAPPDATA%\Cogitator\data\discovery.json` on Windows, none elsewhere | Where to find Cogitator's discovery file. |
 | `JUHANDU_COGITATOR_KEY_FILE` | none | A file holding Cogitator's interactive key, in place of the secret `cogitator/interactive`. |

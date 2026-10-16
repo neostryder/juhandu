@@ -12,7 +12,7 @@ import { dot } from "../taste/vectors.ts";
 export interface ProposerOptions {
   /** Same-sign votes needed before a cluster is worth a draft. */
   minVotes: number;
-  /** Cosine at which two voted items count as the same topic (nomic compresses similarities, so same-topic sits around 0.72 to 0.76). */
+  /** Cosine at which two voted items count as the same topic, tuned to EmbeddingGemma 2 (0.75). */
   clusterSimilarity: number;
   maxDraftsPerRun: number;
   maxPending: number;
@@ -22,7 +22,7 @@ export interface ProposerOptions {
   maxRecentRate: number;
 }
 
-export const DEFAULT_OPTIONS: ProposerOptions = { minVotes: 3, clusterSimilarity: 0.72, maxDraftsPerRun: 4, maxPending: 20, coverage: 0.67, maxRecentRate: 0.25 };
+export const DEFAULT_OPTIONS: ProposerOptions = { minVotes: 3, clusterSimilarity: 0.75, maxDraftsPerRun: 4, maxPending: 20, coverage: 0.67, maxRecentRate: 0.25 };
 
 export interface ProposeRun {
   proposed: number;

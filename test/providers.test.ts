@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CogitatorProvider, keyFromValue } from "../src/models/cogitator.ts";
 import type { Discovery } from "../src/models/cogitator.ts";
-import { Embedder } from "../src/models/embedder.ts";
+import { Embedder, promptsFor } from "../src/models/embedder.ts";
 import { EgressGate } from "../src/models/egress.ts";
 import { OpenAICompatibleProvider } from "../src/models/generic.ts";
 import type { OpenAIEndpoint } from "../src/models/openai.ts";
@@ -189,6 +189,37 @@ test("the embedder tags truncated vectors with their dimensions", async () => {
   const out = await embedder.documents("public", "background", ["abc"]);
   assert.equal(out.tag, "nomic-embed-text-v1.5@2");
   assert.equal(out.vectors[0]!.length, 2);
+});
+
+const WITH_GEMMA: Discovery = { ...DISCOVERY, roles: [...DISCOVERY.roles, { name: "embed-gemma2", chain: ["embeddinggemma-2", "embeddinggemma-2@bilbo"] }] };
+
+test("the embedding role is the one asked for, falls back to the older embed role, and a failover peer's name is not a different model", async () => {
+  const calls: Call[] = [];
+  const wanted = cogitator(fakeHost(calls, { discovery: WITH_GEMMA, embedModelHeader: "embeddinggemma-2@bilbo" }), { roles: { embed: "embed-gemma2" } });
+  assert.equal(await wanted.embeddingModel(), "embeddinggemma-2");
+  const served = await wanted.embed({ tier: "public", priority: "background", texts: ["a"] });
+  assert.equal(served.model, "embeddinggemma-2", "the peer that answered is dropped from the model name");
+  assert.equal(calls[0]!.body["model"], "embed-gemma2");
+  const older = cogitator(fakeHost(calls), { roles: { embed: "embed-gemma2" } });
+  assert.equal(await older.embeddingModel(), "nomic-embed-text-v1.5", "a gateway without the new role keeps serving the old one");
+  calls.length = 0;
+  await older.embed({ tier: "public", priority: "background", texts: ["a"] });
+  assert.equal(calls[0]!.body["model"], "embed");
+});
+
+test("each embedding model gets the prefixes it was trained with, and an environment prefix overrides them", async () => {
+  assert.deepEqual(promptsFor("embeddinggemma-2"), { document: "title: none | text: ", query: "task: search result | query: " });
+  assert.deepEqual(promptsFor("nomic-embed-text-v1.5"), { document: "clustering: ", query: "clustering: " });
+  const calls: Call[] = [];
+  const gemma = new Embedder({ provider: cogitator(fakeHost(calls, { discovery: WITH_GEMMA, embedModelHeader: "embeddinggemma-2" }), { roles: { embed: "embed-gemma2" } }) });
+  await gemma.documents("public", "background", ["story"]);
+  await gemma.queries("background", ["a rule"]);
+  assert.deepEqual(calls.map((c) => c.body["input"]), [["title: none | text: story"], ["task: search result | query: a rule"]]);
+  calls.length = 0;
+  const forced = new Embedder({ provider: cogitator(fakeHost(calls)), documentPrefix: "doc: ", queryPrefix: "q: " });
+  await forced.documents("public", "background", ["x"]);
+  await forced.queries("background", ["y"]);
+  assert.deepEqual(calls.map((c) => c.body["input"]), [["doc: x"], ["q: y"]]);
 });
 
 test("the setup picks Cogitator, a plain endpoint, or nothing", () => {

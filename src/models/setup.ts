@@ -13,6 +13,9 @@ import type { ModelProvider } from "./provider.ts";
 
 type Env = Record<string, string | undefined>;
 
+/** The Cogitator role that embeds text. When the gateway has no role by this name, the adapter falls back to its older "embed" role. */
+const DEFAULT_EMBED_ROLE = "embed-gemma2";
+
 /** The default for an endpoint's _LOCAL setting: an address that names this machine counts as local. */
 export function isLoopback(url: string): boolean {
   const host = new URL(url).hostname;
@@ -65,6 +68,7 @@ export function buildProvider(env: Env, dataDir: string, secrets?: SecretStore):
       ...(gatewayUrl ? { gatewayUrl } : {}),
       interactiveKey: keyFor(interactiveFile, "cogitator/interactive", "interactive.key"),
       backgroundKey: keyFor(backgroundFile, "cogitator/background", "background.key"),
+      roles: { embed: env["JUHANDU_COGITATOR_EMBED_ROLE"] ?? DEFAULT_EMBED_ROLE },
     });
   }
   const embed = endpointFrom(env, "JUHANDU_EMBED", "embeddings", "nomic-embed-text-v1.5");
@@ -81,5 +85,7 @@ export function buildProvider(env: Env, dataDir: string, secrets?: SecretStore):
 export function buildEmbedder(provider: ModelProvider | null, env: Env): Embedder | null {
   if (!provider?.capabilities.embed) return null;
   const dims = env["JUHANDU_EMBED_DIMS"] ? Number(env["JUHANDU_EMBED_DIMS"]) : undefined;
-  return new Embedder({ provider, documentPrefix: env["JUHANDU_EMBED_DOC_PREFIX"] ?? "clustering: ", ...(dims ? { dims } : {}) });
+  const documentPrefix = env["JUHANDU_EMBED_DOC_PREFIX"];
+  const queryPrefix = env["JUHANDU_EMBED_QUERY_PREFIX"];
+  return new Embedder({ provider, ...(documentPrefix !== undefined ? { documentPrefix } : {}), ...(queryPrefix !== undefined ? { queryPrefix } : {}), ...(dims ? { dims } : {}) });
 }
