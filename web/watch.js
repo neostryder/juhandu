@@ -104,7 +104,7 @@ class VzWatch extends HTMLElement {
   async load(note = "") {
     try {
       this.status = await api("/api/watch");
-      this.say(note === "denied" ? "Trakt did not finish the sign-in. Try connecting again." : this.status.lastError || "");
+      this.say(note === "denied" ? `Trakt did not finish the sign-in. ${this.status.lastError || "Try connecting again."}` : this.status.lastError || "");
       if (this.status.connected) this.items = (await api("/api/watch/up-next")).items;
       else this.items = [];
       this.render();

@@ -259,6 +259,7 @@ test("a sign-in state works once, expires, and the code goes back with its own v
   assert.equal(challengeFor(exchange.body["code_verifier"]), challenge);
   await assert.rejects(watch.finish("the-code", first.state), /expired/);
   await assert.rejects(watch.finish("x", "never-issued"), TraktAuthError);
+  assert.match((await watch.status()).lastError, /expired/, "a failed sign-in leaves its reason for the screen");
   const late = watch.start();
   advance(16 * 60_000);
   await assert.rejects(watch.finish("the-code", late.state), /expired/);

@@ -119,8 +119,13 @@ export class WatchService {
   async finish(code: string, state: string): Promise<void> {
     const pending = this.pending.get(state);
     this.pending.delete(state);
-    if (!pending || this.clock().getTime() - pending.startedAt > PENDING_MS) throw new TraktAuthError("That sign-in has expired. Start it again.");
-    await this.trakt.exchange(code.trim(), pending.verifier, pending.redirectUri);
+    try {
+      if (!pending || this.clock().getTime() - pending.startedAt > PENDING_MS) throw new TraktAuthError("That sign-in has expired. Start it again.");
+      await this.trakt.exchange(code.trim(), pending.verifier, pending.redirectUri);
+    } catch (error) {
+      this.store.setMeta("watch:lastError", describe(error));
+      throw error;
+    }
     this.store.setMeta("watch:lastError", "");
   }
 
