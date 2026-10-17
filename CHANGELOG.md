@@ -4,6 +4,8 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-17
+
 ### Added
 
 - [Visible] [UI] **Each feed has a tier, a folder, and a check interval, set when it is added and changeable later.** The add box on Reading has a Folder box and a menu for who may read the feed's text: Public lets a hosted model read it, and Private keeps it to local models. The Feeds screen labels private feeds and gives every feed an Edit control for its tier, its folder, and how often it is checked, anywhere from every 5 minutes to once a day. Items follow their feed's tier right away, so once a feed is private, hosted models stop seeing its text. In the API, `PATCH /api/sources/<id>` takes `folder`, `tier`, and `pollMinutes` (a whole number from 5 to 1440), and fields left out stay as they were.
