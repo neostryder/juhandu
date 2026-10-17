@@ -12,6 +12,7 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 ### Changed
 
 - [Visible] [UI] **The open app checks for new items every five minutes instead of every minute when the browser asks to save data.**
+- [Visible] [Security] **The embedding endpoint must be on this machine, because embeddings carry item text and rule sentences.** It counts as local at a loopback address or with `JUHANDU_EMBED_LOCAL=1`, and at any other address embeddings stay off and the start-up log says so.
 
 ## [0.3.0] - 2026-10-16
 

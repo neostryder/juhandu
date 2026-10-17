@@ -71,7 +71,10 @@ export function buildProvider(env: Env, dataDir: string, secrets?: SecretStore):
       roles: { embed: env["JUHANDU_COGITATOR_EMBED_ROLE"] ?? DEFAULT_EMBED_ROLE },
     });
   }
-  const embed = endpointFrom(env, "JUHANDU_EMBED", "embeddings", "nomic-embed-text-v1.5");
+  const embedded = endpointFrom(env, "JUHANDU_EMBED", "embeddings", "nomic-embed-text-v1.5");
+  // Embeddings carry item text and the owner's rule sentences, so they stay on this machine: an embedding endpoint that is not local is not used.
+  const embed = embedded?.local ? embedded : null;
+  if (embedded && !embed) console.warn(`Juhandu: the embedding endpoint ${embedded.baseUrl} is not local, so embeddings are off. Embeddings never leave this machine.`);
   const chat = endpointFrom(env, "JUHANDU_CHAT", "chat", "default");
   if (!embed && !chat) return null;
   const gate = new EgressGate(env["JUHANDU_PRIVATE_ALLOW"]?.split(",").map((s) => s.trim()).filter(Boolean));

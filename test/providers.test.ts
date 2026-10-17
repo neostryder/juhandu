@@ -222,6 +222,19 @@ test("each embedding model gets the prefixes it was trained with, and an environ
   assert.deepEqual(calls.map((c) => c.body["input"]), [["doc: x"], ["q: y"]]);
 });
 
+test("an embedding endpoint that is not local is never used, unless it is marked local", () => {
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    const remote = { JUHANDU_EMBED_URL: "https://embed.example.com/v1" };
+    assert.equal(buildProvider(remote, "/tmp/x"), null);
+    assert.equal(buildEmbedder(buildProvider({ ...remote, JUHANDU_CHAT_URL: "http://127.0.0.1:8181/v1" }, "/tmp/x"), {}), null);
+    assert.equal(buildProvider({ ...remote, JUHANDU_EMBED_LOCAL: "1" }, "/tmp/x")?.name, "openai-compatible");
+  } finally {
+    console.warn = warn;
+  }
+});
+
 test("the setup picks Cogitator, a plain endpoint, or nothing", () => {
   assert.equal(buildProvider({ JUHANDU_LOCAL_AI: "off", JUHANDU_COGITATOR_URL: "http://127.0.0.1:8470" }, "/tmp/x"), null);
   assert.equal(buildProvider({ JUHANDU_COGITATOR_URL: "http://127.0.0.1:8470" }, "/tmp/x")?.name, "cogitator");

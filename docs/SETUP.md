@@ -16,7 +16,7 @@ Juhandu picks a model adapter with `JUHANDU_LOCAL_AI`, which the Connect screen 
 
 ### OpenAI-style endpoints
 
-Any server that answers the OpenAI `/embeddings` and `/chat/completions` routes works, whether it runs on this machine or is a hosted API. The address is the base URL that those routes hang off, usually ending in `/v1`. For a model server on this machine:
+Any server that answers the OpenAI `/embeddings` and `/chat/completions` routes works. The chat endpoint can be a hosted API, but the embedding endpoint must be on this machine (a loopback address, or any address with `JUHANDU_EMBED_LOCAL=1`), because embeddings carry item text and your rule sentences. The address is the base URL that those routes hang off, usually ending in `/v1`. For a model server on this machine:
 
 ```
 JUHANDU_EMBED_URL=http://127.0.0.1:8080/v1
@@ -25,7 +25,7 @@ JUHANDU_CHAT_URL=http://127.0.0.1:8080/v1
 JUHANDU_CHAT_MODEL=your-chat-model
 ```
 
-The embedding endpoint is used for taste, semantic rules, story matching and rule proposals. The chat endpoint writes summaries, story lines and rule drafts, answers pipe questions, digests video captions and, by default, acts as the judge. Either one can be set alone, and the features that need the other stay off.
+The embedding endpoint is used for taste, semantic rules, story matching and rule proposals. If its address is not local, Juhandu leaves embeddings off and says so in the start-up log. The chat endpoint writes summaries, story lines and rule drafts, answers pipe questions, digests video captions and, by default, acts as the judge. Either one can be set alone, and the features that need the other stay off.
 
 Each endpoint takes the same set of variables after its prefix: `_URL` turns it on, `_KEY` is the API key sent as a bearer token, `_MODEL` names the model, `_LOCAL` set to `1` or `0` overrides whether it counts as on this machine (by default a loopback address counts as local), and, for the chat endpoint, `_EXTRA_BODY` is JSON added to each request. `JUHANDU_EMBED_KEY` and `JUHANDU_CHAT_KEY` can also come from the secret store under `embed/key` and `chat/key`.
 
