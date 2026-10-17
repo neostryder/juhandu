@@ -19,6 +19,8 @@ export interface BriefingEntry {
   pinned: boolean;
   links: BriefingLink[];
   storyId?: number;
+  /** True when the merged line was written from a story that has a private member, even one outside this briefing. Outside the app the line is treated as private. Briefings saved before this field existed leave it out, and a story line without it counts as private. */
+  private?: boolean;
 }
 
 export interface BriefingSection {
@@ -121,9 +123,12 @@ export class Briefer {
     const pinned = group.members.some((m) => m.pinned);
     if (group.storyId !== null) {
       const story = this.store.getStory(group.storyId);
-      if (story?.summary) return { kind: "story", text: story.summary, verified: story.verified, headlineOnly: false, pinned, links, storyId: group.storyId };
+      if (story?.summary) {
+        const hasPrivateMember = this.store.storyMembers(group.storyId).some((m) => m.tier === "private");
+        return { kind: "story", text: story.summary, verified: story.verified, headlineOnly: false, pinned, links, storyId: group.storyId, private: hasPrivateMember };
+      }
       const best = group.members.find((m) => m.summary) ?? group.members[0]!;
-      return { kind: "story", text: best.summary?.text ?? best.title, verified: best.summary?.verified ?? false, headlineOnly: !best.summary, pinned, links, storyId: group.storyId };
+      return { kind: "story", text: best.summary?.text ?? best.title, verified: best.summary?.verified ?? false, headlineOnly: !best.summary, pinned, links, storyId: group.storyId, private: false };
     }
     const item = group.members[0] as BriefingItem;
     return { kind: "item", text: item.summary?.text ?? item.title, verified: item.summary?.verified ?? false, headlineOnly: !item.summary, pinned, links };

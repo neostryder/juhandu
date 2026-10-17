@@ -8,10 +8,9 @@ function hostOf(value: string): string {
   return match?.[1] ?? "";
 }
 
-/** The port a Host header names, with the default web ports counted as none so it compares with an Origin's port. */
+/** The port a Host header names explicitly, or an empty string when it names none. */
 function portOf(value: string): string {
-  const port = value.trim().match(/:(\d+)$/)?.[1] ?? "";
-  return port === "80" || port === "443" ? "" : port;
+  return value.trim().match(/:(\d+)$/)?.[1] ?? "";
 }
 
 export interface GuardHeaders {
@@ -35,13 +34,15 @@ export class RequestGuard {
       try {
         const parsed = new URL(headers.origin);
         origin = parsed.hostname;
-        originPort = parsed.port;
+        originPort = parsed.port || (parsed.protocol === "https:" ? "443" : "80");
       } catch {
         return "The request came from an origin that is not allowed";
       }
       if (!this.allowed.has(origin === "::1" ? "[::1]" : origin)) return "The request came from an origin that is not allowed";
       // A page served on another port of an allowed name (another local dev server) is a different origin.
-      if (originPort !== portOf(headers.host ?? "")) return "The request came from an origin that is not allowed";
+      // An Origin always has a port, the scheme's default when none is written. A Host with no port means a web default, 80 or 443.
+      const hostPort = portOf(headers.host ?? "");
+      if (hostPort ? originPort !== hostPort : originPort !== "80" && originPort !== "443") return "The request came from an origin that is not allowed";
     }
     return null;
   }

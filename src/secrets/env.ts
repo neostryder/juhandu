@@ -6,6 +6,7 @@ type Env = Record<string, string | undefined>;
 /** Secret names for the keys Juhandu uses, and the environment variable each one fills when the variable is not already set. */
 const KEY_SECRETS: { name: string; variable: string; unlessSet: string[] }[] = [
   { name: "jev/key", variable: "JUHANDU_JEV_KEY", unlessSet: ["JUHANDU_JEV_KEY", "TYPESAFE_API_KEY", "JEV_API_KEY", "JUHANDU_JEV_KEY_FILE"] },
+  { name: "jev/gateway_token", variable: "JUHANDU_JEV_GATEWAY_TOKEN", unlessSet: ["JUHANDU_JEV_GATEWAY_TOKEN", "JUHANDU_JEV_GATEWAY_TOKEN_FILE"] },
   { name: "chat/key", variable: "JUHANDU_CHAT_KEY", unlessSet: ["JUHANDU_CHAT_KEY"] },
   { name: "embed/key", variable: "JUHANDU_EMBED_KEY", unlessSet: ["JUHANDU_EMBED_KEY"] },
   { name: "transcribe/key", variable: "JUHANDU_TRANSCRIBE_KEY", unlessSet: ["JUHANDU_TRANSCRIBE_KEY"] },

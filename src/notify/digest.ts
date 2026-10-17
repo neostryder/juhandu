@@ -38,7 +38,8 @@ const DAY = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", d
 
 /**
  * Takes a stored briefing and the data tier of each item in it. An entry with any private link is withheld unless includePrivate is set;
- * an item whose tier is unknown counts as private.
+ * an item whose tier is unknown counts as private. A merged story line is withheld too when it was written from a story with a private member,
+ * and a story line from a briefing saved before that was recorded counts as private.
  */
 export function buildDigest(briefing: Briefing, tiers: Map<number, DataTier>, options: { includePrivate: boolean }): Digest {
   let withheld = 0;
@@ -46,7 +47,8 @@ export function buildDigest(briefing: Briefing, tiers: Map<number, DataTier>, op
   for (const section of briefing.sections) {
     const entries: DigestEntry[] = [];
     for (const entry of section.entries) {
-      const isPrivate = entry.links.some((link) => (tiers.get(link.id) ?? "private") === "private");
+      const storyIsPrivate = entry.kind === "story" && entry.private !== false;
+      const isPrivate = storyIsPrivate || entry.links.some((link) => (tiers.get(link.id) ?? "private") === "private");
       if (isPrivate && !options.includePrivate) {
         withheld++;
         continue;

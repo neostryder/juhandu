@@ -268,7 +268,7 @@ export class McpServer {
         readOnly: false,
         run: (args) => {
           const ids = Array.isArray(args["item_ids"]) ? args["item_ids"] : [];
-          if (!ids.length || ids.length > 200 || !ids.every((i) => Number.isInteger(i) && i > 0)) throw new ToolError("item_ids must hold 1 to 200 item ids");
+          if (!ids.length || ids.length > 200 || !ids.every((i) => Number.isInteger(i) && i > 0 && i <= 2 ** 31)) throw new ToolError("item_ids must hold 1 to 200 item ids");
           const read = args["read"] !== false;
           const allowed = (ids as number[]).filter((id) => this.canChange(id));
           const changed = read ? store.markItemsRead(allowed) : allowed.filter((id) => store.setRead(id, false)).length;

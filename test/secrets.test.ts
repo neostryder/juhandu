@@ -224,6 +224,9 @@ test("stored model keys fill the environment only when nothing else sets them", 
   assert.equal(env["JUHANDU_CHAT_KEY"], "from-env");
   assert.equal((await envWithSecrets({ JEV_API_KEY: "x" }, store))["JUHANDU_JEV_KEY"], undefined, "an existing Jev setting wins");
   assert.equal(await keyFromSecrets(store, "jev/key").get(), "stored-jev");
+  mem.values.set("jev/gateway_token", "stored-gateway");
+  assert.equal((await envWithSecrets({}, store))["JUHANDU_JEV_GATEWAY_TOKEN"], "stored-gateway");
+  assert.equal((await envWithSecrets({ JUHANDU_JEV_GATEWAY_TOKEN_FILE: "/x" }, store))["JUHANDU_JEV_GATEWAY_TOKEN"], undefined, "a token file wins");
   await assert.rejects(keyFromSecrets(store, "cogitator/interactive").get(), /No cogitator\/interactive key/);
 });
 
@@ -449,4 +452,17 @@ test("errors from a private-link fetch do not repeat the token", async () => {
   assert.equal(result.error?.includes("tok-SECRET-123"), false);
   assert.equal(store.getSource(source.id)?.lastError?.includes("tok-SECRET-123"), false, "the stored error is redacted");
   store.close();
+});
+
+test("deleting a secret that a read-only source still provides is reported, not hidden", async () => {
+  const env = new MemBackend("env", false);
+  const dir = new MemBackend("dir");
+  const store = new SecretStore([env, dir], new Redactor());
+  env.values.set("a/one", "from-env");
+  dir.values.set("a/one", "from-dir");
+  await assert.rejects(() => store.delete("a/one"), /still provided/);
+  assert.equal(dir.values.has("a/one"), false, "the writable copy is gone");
+  dir.values.set("a/two", "only-dir");
+  await store.delete("a/two");
+  assert.equal(await store.get("a/two"), undefined);
 });

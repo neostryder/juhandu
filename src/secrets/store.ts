@@ -147,6 +147,8 @@ export class SecretStore {
       }
     }
     if (failed) throw new Error("Could not remove the stored secret from every backend");
+    // A read-only source such as the environment cannot be cleared from here, and a secret it still provides must not look removed.
+    if ((await this.get(name)) !== undefined) throw new Error("The secret is still provided by a source that cannot be changed from here");
   }
 
   /** A JSON secret (a login is a few fields). Returns undefined when absent or unreadable. */
