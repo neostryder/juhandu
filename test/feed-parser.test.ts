@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { FeedParseError, parseFeed } from "../src/sources/feed-parser.ts";
+import { parseXml } from "../src/sources/xml.ts";
 import { discoverFeeds } from "../src/sources/discover.ts";
 import { parseYoutubeUrl, extractChannelId, youtubeFeedUrl } from "../src/sources/youtube.ts";
 
@@ -81,4 +82,14 @@ test("recognizes YouTube channel, handle and playlist URLs", () => {
   assert.equal(parseYoutubeUrl("https://example.com/channel/UCabcdefghijklmnopqrstuv"), null);
   assert.equal(youtubeFeedUrl({ kind: "channel", id: "UCx" }), "https://www.youtube.com/feeds/videos.xml?channel_id=UCx");
   assert.equal(extractChannelId('<meta itemprop="identifier" content="UCabcdefghijklmnopqrstuv">'), "UCabcdefghijklmnopqrstuv");
+});
+
+test("a closing tag that matches nothing open is ignored, and a stream of them stays fast", () => {
+  const tree = parseXml("<a><b>x</c></b><d/></a>");
+  const a = tree.children[0]!;
+  assert.deepEqual(a.children.map((n) => n.name), ["b", "d"], "the stray </c> neither closes b nor drops d out of a");
+  const started = Date.now();
+  const deep = "<x>".repeat(2000) + "</nope>".repeat(60000);
+  parseXml(deep);
+  assert.ok(Date.now() - started < 2000, "unmatched closers must not rescan the open stack each time");
 });

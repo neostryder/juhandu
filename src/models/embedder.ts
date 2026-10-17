@@ -66,9 +66,9 @@ export class Embedder {
     return this.embed(tier, priority, texts, "document");
   }
 
-  /** Rule sentences and examples are the user's own text, not feed data, so they travel as the public tier. */
-  queries(priority: Priority, texts: string[]): Promise<Embedded> {
-    return this.embed("public", priority, texts, "query");
+  /** Rule sentences and examples are the user's own text, not feed data, so they travel as the public tier unless the caller says the text was drafted from private items. */
+  queries(priority: Priority, texts: string[], tier: DataTier = "public"): Promise<Embedded> {
+    return this.embed(tier, priority, texts, "query");
   }
 }
 

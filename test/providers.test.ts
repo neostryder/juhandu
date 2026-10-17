@@ -318,3 +318,18 @@ test("judge calls switch thinking off through Cogitator, and only add extra fiel
   await configured.chat(request);
   assert.deepEqual(calls[0]!.body["chat_template_kwargs"], { enable_thinking: false });
 });
+
+test("a sentence drafted from private items is embedded at the private tier, and the default stays public", async () => {
+  const tiers: string[] = [];
+  const provider = {
+    embeddingModel: async () => "embed",
+    embed: async (request: { tier: string; texts: string[] }) => {
+      tiers.push(request.tier);
+      return { model: "embed", vectors: request.texts.map(() => new Float32Array([1, 0])) };
+    },
+  } as unknown as ModelProvider;
+  const embedder = new Embedder({ provider });
+  await embedder.queries("background", ["a rule"]);
+  await embedder.queries("background", ["a rule drafted from private votes"], "private");
+  assert.deepEqual(tiers, ["public", "private"]);
+});

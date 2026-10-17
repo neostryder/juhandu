@@ -36,6 +36,8 @@ function parseAttributes(source: string): Record<string, string> {
 export function parseXml(source: string): XmlNode {
   const root: XmlNode = { name: "#root", attrs: {}, children: [], text: "" };
   const stack: XmlNode[] = [root];
+  // How many open elements carry each name, so a closing tag that matches nothing open is dropped without scanning the stack.
+  const open = new Map<string, number>();
   const tokens = /<!--[\s\S]*?-->|<!\[CDATA\[([\s\S]*?)\]\]>|<\?[\s\S]*?\?>|<!DOCTYPE[^>]*(?:\[[\s\S]*?\])?>|<\/([^\s>]+)\s*>|<([^\s/>!?][^\s/>]*)((?:"[^"]*"|'[^']*'|[^>])*?)(\/?)>|([^<]+)/gi;
   let match: RegExpExecArray | null;
   while ((match = tokens.exec(source)) !== null) {
@@ -44,16 +46,25 @@ export function parseXml(source: string): XmlNode {
       top.text += match[1];
     } else if (match[2] !== undefined) {
       const closing = match[2];
-      for (let i = stack.length - 1; i > 0; i--) {
-        if ((stack[i] as XmlNode).name === closing) {
-          stack.length = i;
-          break;
+      if ((open.get(closing) ?? 0) > 0) {
+        for (let i = stack.length - 1; i > 0; i--) {
+          if ((stack[i] as XmlNode).name === closing) {
+            for (let j = stack.length - 1; j >= i; j--) {
+              const name = (stack[j] as XmlNode).name;
+              open.set(name, (open.get(name) ?? 1) - 1);
+            }
+            stack.length = i;
+            break;
+          }
         }
       }
     } else if (match[3] !== undefined) {
       const node: XmlNode = { name: match[3], attrs: parseAttributes(match[4] ?? ""), children: [], text: "" };
       top.children.push(node);
-      if (match[5] !== "/") stack.push(node);
+      if (match[5] !== "/") {
+        stack.push(node);
+        open.set(node.name, (open.get(node.name) ?? 0) + 1);
+      }
     } else if (match[6] !== undefined) {
       top.text += decodeEntities(match[6]);
     }

@@ -181,7 +181,7 @@ async function serve(withToken: boolean, publicHosts: string[] = []) {
       req.on("error", reject);
       req.end(body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body));
     });
-  return { call, token, store, close: () => new Promise<void>((resolve) => app.close(() => resolve())) };
+  return { call, port, token, store, close: () => new Promise<void>((resolve) => app.close(() => resolve())) };
 }
 
 const PING = { jsonrpc: "2.0", id: 1, method: "ping" };
@@ -194,7 +194,8 @@ test("the /mcp door answers this machine, refuses other hosts and web pages, and
     assert.deepEqual(JSON.parse(ok.text), { jsonrpc: "2.0", id: 1, result: {} });
     assert.equal((await s.call("POST", "/mcp", { host: "evil.example" }, PING)).status, 403, "a rebinding Host is refused");
     assert.equal((await s.call("POST", "/mcp", { origin: "https://evil.example" }, PING)).status, 403, "a web page's Origin is refused");
-    assert.equal((await s.call("POST", "/mcp", { origin: "http://localhost:3000" }, PING)).status, 200);
+    assert.equal((await s.call("POST", "/mcp", { origin: "http://localhost:3000" }, PING)).status, 403, "a page on another local port is a different origin");
+    assert.equal((await s.call("POST", "/mcp", { origin: `http://localhost:${s.port}` }, PING)).status, 200, "a page on this server's own port is not");
     assert.equal((await s.call("GET", "/mcp", {})).status, 405);
     assert.equal((await s.call("POST", "/mcp", {}, { jsonrpc: "2.0", method: "notifications/initialized" })).status, 202);
     assert.equal((await s.call("POST", "/mcp", {}, "{")).status, 400);
@@ -258,4 +259,20 @@ test("with a token set the door needs it, and the settings API shows it once", a
     await s.close();
     s.store.close();
   }
+});
+
+test("list_rules leaves out a rule scoped to a private feed unless private feeds are allowed", async () => {
+  const { tool, store, settings } = await fixture();
+  const sources = store.listSources();
+  const pub = sources.find((s) => s.tier === "public")!;
+  const priv = sources.find((s) => s.tier === "private")!;
+  const keyword = { type: "keyword" as const, terms: ["x"], mode: "any" as const, fields: ["title" as const] };
+  store.addRule({ kind: "block", scope: { type: "all" }, condition: keyword });
+  store.addRule({ kind: "block", scope: { type: "source", sourceId: pub.id }, condition: keyword });
+  store.addRule({ kind: "block", scope: { type: "source", sourceId: priv.id }, condition: keyword });
+  const scopes = async () => ((await tool("list_rules")).data.rules as { scope: { type: string; sourceId?: number } }[]).map((r) => r.scope.sourceId ?? r.scope.type);
+  assert.deepEqual(await scopes(), ["all", pub.id]);
+  settings.includePrivate = true;
+  assert.deepEqual(await scopes(), ["all", pub.id, priv.id]);
+  store.close();
 });

@@ -1,4 +1,5 @@
-import { isPrivateHost } from "../util/network.ts";
+import { isPrivateName, resolveHost } from "../util/network.ts";
+import type { HostResolver } from "../util/network.ts";
 
 export const USER_AGENT = "Juhandu/0.0 feed reader";
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -21,6 +22,11 @@ export interface FetchResult {
 }
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+
+/** Real fetches look names up before trusting them; a test or caller that supplies its own fetch is not sent to the network by this check. */
+export function resolverFor(fetchImpl: FetchLike): HostResolver | undefined {
+  return fetchImpl === fetch ? resolveHost : undefined;
+}
 
 export function assertHttpUrl(raw: string): URL {
   let url: URL;
@@ -52,7 +58,7 @@ async function readCapped(response: Response): Promise<string> {
 }
 
 /** One polite conditional GET. Sends If-None-Match and If-Modified-Since when known; a 304 returns notModified. */
-export async function fetchText(url: string, state: ConditionalState = {}, fetchImpl: FetchLike = fetch, timeoutMs = 20_000, loginHeaders: Record<string, string> = {}): Promise<FetchResult> {
+export async function fetchText(url: string, state: ConditionalState = {}, fetchImpl: FetchLike = fetch, timeoutMs = 20_000, loginHeaders: Record<string, string> = {}, resolve: HostResolver | undefined = resolverFor(fetchImpl)): Promise<FetchResult> {
   assertHttpUrl(url);
   const headers: Record<string, string> = {
     "user-agent": USER_AGENT,
@@ -65,7 +71,7 @@ export async function fetchText(url: string, state: ConditionalState = {}, fetch
   const hasLogin = Object.keys(loginHeaders).length > 0;
   // Redirects are followed by hand. Login headers go only to the origin they were given for, so a feed cannot bounce a cookie or password to another site, and a public address cannot redirect the fetch onto this machine or a private network.
   const origin = new URL(url).origin;
-  const startedPrivate = isPrivateHost(new URL(url).hostname);
+  const startedPrivate = await isPrivateName(new URL(url).hostname, resolve);
   let target = url;
   let response: Response;
   for (let hops = 0; ; hops++) {
@@ -76,7 +82,7 @@ export async function fetchText(url: string, state: ConditionalState = {}, fetch
       await response.body?.cancel();
       if (hops >= 5) throw new Error("Too many redirects");
       const next = assertHttpUrl(new URL(location, target).toString());
-      if (!startedPrivate && isPrivateHost(next.hostname)) throw new Error("A public address redirected to a private one, so the fetch was stopped");
+      if (!startedPrivate && (await isPrivateName(next.hostname, resolve))) throw new Error("A public address redirected to a private one, so the fetch was stopped");
       target = next.toString();
       continue;
     }

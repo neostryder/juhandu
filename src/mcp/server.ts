@@ -208,7 +208,8 @@ export class McpServer {
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
         write: false,
         readOnly: true,
-        run: () => ({ rules: store.listRules().map((r) => ({ id: r.id, kind: r.kind, status: r.status, origin: r.origin, scope: r.scope, condition: r.condition, note: clip(r.note, 200) })) }),
+        // A rule scoped to a private feed names that feed and may quote its text, so it is left out unless private feeds are allowed.
+        run: () => ({ rules: store.listRules().filter((r) => r.scope.type !== "source" || this.visible(r.scope.sourceId)).map((r) => ({ id: r.id, kind: r.kind, status: r.status, origin: r.origin, scope: r.scope, condition: r.condition, note: clip(r.note, 200) })) }),
       },
       {
         name: "list_pipes",

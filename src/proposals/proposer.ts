@@ -274,7 +274,9 @@ export class Proposer {
     if (!draft.sentence || !this.embedder) return null;
     let sentenceVec: Float32Array;
     try {
-      const embedded = await this.embedder.queries(priority, [draft.sentence]);
+      // The sentence was drafted from these votes, so it carries their tier: a sentence drafted from a private feed is embedded by a private endpoint only.
+      const sentenceTier: DataTier = [...members, ...opposite.slice(0, 6)].some((m) => m.tier === "private") ? "private" : "public";
+      const embedded = await this.embedder.queries(priority, [draft.sentence], sentenceTier);
       if (embedded.tag !== tag) return null;
       sentenceVec = embedded.vectors[0] as Float32Array;
     } catch (error) {

@@ -23,6 +23,11 @@ function hostOf(value: string): string {
   return match?.[1] ?? "";
 }
 
+/** The port a Host header names explicitly, or an empty string when it names none. */
+function portOf(value: string): string {
+  return value.trim().match(/:(\d+)$/)?.[1] ?? "";
+}
+
 export class McpAccess {
   private readonly store: Store;
   private readonly secrets: SecretStore | undefined;
@@ -82,7 +87,12 @@ export class McpAccess {
     if (!LOOPBACK.has(hostOf(headers.host ?? ""))) return false;
     if (headers.origin !== undefined) {
       try {
-        if (!LOOPBACK.has(new URL(headers.origin).hostname)) return false;
+        const origin = new URL(headers.origin);
+        if (!LOOPBACK.has(origin.hostname)) return false;
+        // A page served on another local port is a different origin, so it may not drive the door either.
+        const originPort = origin.port || (origin.protocol === "https:" ? "443" : "80");
+        const hostPort = portOf(headers.host ?? "");
+        if (hostPort ? originPort !== hostPort : originPort !== "80" && originPort !== "443") return false;
       } catch {
         return false;
       }

@@ -25,12 +25,15 @@ function vecFor(text: string): Float32Array {
 
 type Reply = (request: ChatRequest) => string | Error;
 
-function fakeProvider(reply: Reply, seen: ChatRequest[] = []): ModelProvider {
+function fakeProvider(reply: Reply, seen: ChatRequest[] = [], embedSeen: EmbedRequest[] = []): ModelProvider {
   return {
     name: "fake",
     capabilities: { embed: true, chat: true, decide: false, transcribe: false },
     embeddingModel: async () => TAG,
-    embed: async (request: EmbedRequest) => ({ vectors: request.texts.map(vecFor), model: TAG }),
+    embed: async (request: EmbedRequest) => {
+      embedSeen.push(request);
+      return { vectors: request.texts.map(vecFor), model: TAG };
+    },
     chat: async (request): Promise<ChatResult> => {
       seen.push(request);
       const out = reply(request);
@@ -162,8 +165,8 @@ test("clustering groups same-topic vectors and the scope is the narrowest that c
   assert.deepEqual(narrowestScope([{ sourceId: 1, folder: "" }, { sourceId: 2, folder: "" }]), { type: "all" });
 });
 
-function proposerFor(w: World, reply: Reply, seen: ChatRequest[] = []): Proposer {
-  const provider = fakeProvider(reply, seen);
+function proposerFor(w: World, reply: Reply, seen: ChatRequest[] = [], embedSeen: EmbedRequest[] = []): Proposer {
+  const provider = fakeProvider(reply, seen, embedSeen);
   return new Proposer({ store: w.store, provider, embedder: new Embedder({ provider }) });
 }
 
@@ -193,7 +196,7 @@ test("a draft of words that the votes back up is proposed, once, and never goes 
   w.store.close();
 });
 
-test("a draft that shows a private feed's titles to the model is sent at the private tier", async () => {
+function worldWithPrivateLike(): World {
   const w = world([...cryptoTitles, ...rustTitles, ...otherTitles]);
   for (const t of cryptoTitles) vote(w, t, -1);
   const secret = w.store.addSource({ kind: "feed", url: "https://private.example/feed", tier: "private" });
@@ -201,10 +204,26 @@ test("a draft that shows a private feed's titles to the model is sent at the pri
   const privateItem = w.store.listItems({ view: "all", limit: 200, wide: true }).find((i) => i.title === "Quarterly numbers for the board");
   assert.ok(privateItem);
   assert.ok(w.store.setVote(privateItem.id, 1, ""));
+  return w;
+}
+
+test("a draft that shows a private feed's titles to the model is sent at the private tier", async () => {
+  const w = worldWithPrivateLike();
   const seen: ChatRequest[] = [];
   await proposerFor(w, wordsReply, seen).run();
   assert.match(seen[0]?.messages[1]?.content ?? "", /Quarterly numbers/, "the private title reached the prompt");
   assert.equal(seen[0]?.tier, "private", "so the request is gated as private");
+  w.store.close();
+});
+
+test("a sentence drafted from votes that include a private item is embedded at the private tier", async () => {
+  const w = worldWithPrivateLike();
+  const meaningOnly: Reply = () => JSON.stringify({ words: [], sentence: "Cryptocurrency price news", strength: "strong", rationale: "Hides cryptocurrency price news because you disliked five such items." });
+  const embedSeen: EmbedRequest[] = [];
+  await proposerFor(w, meaningOnly, [], embedSeen).run();
+  const drafted = embedSeen.filter((r) => r.texts.some((t) => t.includes("Cryptocurrency price news")));
+  assert.ok(drafted.length > 0, "the drafted sentence was embedded");
+  assert.ok(drafted.every((r) => r.tier === "private"));
   w.store.close();
 });
 
