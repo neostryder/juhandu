@@ -36,6 +36,7 @@ const STYLES = `
   footer.credit { margin: 18px 0 0; color: var(--muted); font-size: 14px; }
   footer.credit p { margin: 4px 0; }
   footer.credit a { color: var(--muted); }
+  footer.credit img.tmdb { display: block; height: 12px; width: auto; max-width: 100%; margin-bottom: 6px; }
   [hidden] { display: none !important; }
   @media (max-width: 520px) { li.show { grid-template-columns: 48px 1fr; } li.show .poster { width: 48px; height: 72px; } }
 `;
@@ -123,6 +124,7 @@ class VzWatch extends HTMLElement {
     const credit = this.$("credit");
     credit.hidden = !s.attribution.length;
     credit.replaceChildren(
+      ...(s.attribution.length ? [el("a", { href: "https://www.themoviedb.org", target: "_blank", rel: "noopener noreferrer", "aria-label": "The Movie Database (TMDB)" }, el("img", { class: "tmdb", src: "/tmdb-logo.svg", alt: "TMDB", height: 12 }))] : []),
       ...s.attribution.map((/** @type {string} */ text) => el("p", { text })),
       el("p", {}, el("a", { href: "https://www.themoviedb.org", target: "_blank", rel: "noopener noreferrer", text: "themoviedb.org" }), " | ", el("a", { href: "https://www.justwatch.com", target: "_blank", rel: "noopener noreferrer", text: "justwatch.com" })),
     );
