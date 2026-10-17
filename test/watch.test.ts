@@ -8,7 +8,7 @@ import type { SecretBackend } from "../src/secrets/store.ts";
 import type { FetchLike } from "../src/sources/fetcher.ts";
 import { Store } from "../src/store/store.ts";
 import { OUT_OF_BAND, TraktAuthError, TraktClient, TraktHttpError, TraktNotConnected, TraktRateLimited, challengeFor, pkcePair } from "../src/watch/trakt.ts";
-import { TmdbClient, parseProviders, providerNames, whereToWatch } from "../src/watch/tmdb.ts";
+import { TmdbClient, parseProviderList, parseProviders, providerNames, whereToWatch } from "../src/watch/tmdb.ts";
 import { JUSTWATCH_CREDIT, TMDB_NOTICE, WatchService } from "../src/watch/watch.ts";
 
 const START = Date.parse("2026-10-16T12:00:00Z");
@@ -68,6 +68,9 @@ class FakeWeb {
   tmdb = new Map<number, unknown>([[1001, providerAnswer]]);
   tmdbToken = "tmdb-token";
   tmdbCalls: number[] = [];
+  regionListCalls: string[] = [];
+  regionList: string[] = ["Netflix", "Starz", "Prime Video"];
+  failRegionList = false;
 
   tokenCalls(): Call[] {
     return this.calls.filter((c) => c.url.endsWith("/oauth/token"));
@@ -77,6 +80,12 @@ class FakeWeb {
     const call: Call = { method: init?.method ?? "GET", url, headers: new Headers(init?.headers), body: init?.body ? JSON.parse(String(init.body)) : {} };
     this.calls.push(call);
     const parsed = new URL(url);
+    if (parsed.hostname === "api.themoviedb.org" && parsed.pathname === "/3/watch/providers/tv") {
+      this.regionListCalls.push(parsed.searchParams.get("watch_region") ?? "");
+      if (this.failRegionList) return new Response("{}", { status: 500 });
+      if (call.headers.get("authorization") !== `Bearer ${this.tmdbToken}`) return new Response("{}", { status: 401 });
+      return new Response(JSON.stringify({ results: this.regionList.map((provider_name, i) => ({ provider_id: i + 1, provider_name })) }), { status: 200 });
+    }
     if (parsed.hostname === "api.themoviedb.org") {
       const id = Number(parsed.pathname.split("/")[3]);
       this.tmdbCalls.push(id);
@@ -299,7 +308,7 @@ test("a sync stores the list, keeps only Trakt's own poster hosts, and caches av
   assert.equal(status.lastError, "");
   assert.equal(status.lastSyncAt, new Date(START).toISOString());
   assert.deepEqual(status.attribution, [TMDB_NOTICE, JUSTWATCH_CREDIT]);
-  assert.deepEqual(status.providerChoices, ["Netflix"]);
+  assert.deepEqual(status.providerChoices, ["Netflix", "Prime Video", "Starz"]);
 });
 
 test("an upcoming episode counts down, and one with no air date is unknown", async () => {
@@ -477,4 +486,47 @@ test("Watch answers 503 when the server was started without it, and 503 to a sig
     await new Promise<void>((resolve) => server.close(() => resolve()));
     store.close();
   }
+});
+
+test("the service list includes every service TMDB lists for the country, not only those the shows use", async () => {
+  const r = rig();
+  await r.signIn();
+  assert.deepEqual((await r.watch.status()).providerChoices, []);
+  await r.watch.sync();
+  const choices = (await r.watch.status()).providerChoices;
+  assert.ok(choices.includes("Starz"), "a service no cached show uses is still offered");
+  assert.ok(choices.includes("Netflix") && choices.includes("Prime Video"));
+  assert.deepEqual(r.web.regionListCalls, ["US"]);
+});
+
+test("the country's service list is asked for once a week and again when the country changes", async () => {
+  const r = rig();
+  await r.signIn();
+  await r.watch.sync();
+  await r.watch.sync();
+  assert.equal(r.web.regionListCalls.length, 1, "a second sync within the week asks nothing");
+  r.advance(8 * 86_400_000);
+  await r.watch.sync();
+  assert.equal(r.web.regionListCalls.length, 2, "after a week it is asked again");
+  r.watch.saveSettings({ region: "gb" });
+  await r.watch.sync();
+  assert.deepEqual(r.web.regionListCalls, ["US", "US", "GB"]);
+});
+
+test("a failing service-list lookup does not stop the sync or the shows' availability", async () => {
+  const r = rig();
+  await r.signIn();
+  r.web.failRegionList = true;
+  const result = await r.watch.sync();
+  assert.deepEqual(result, { shows: 2, providers: 2 });
+  assert.deepEqual((await r.watch.status()).providerChoices, ["Netflix"]);
+  r.web.failRegionList = false;
+  await r.watch.sync();
+  assert.ok((await r.watch.status()).providerChoices.includes("Starz"), "the next sync fills the list in");
+});
+
+test("parseProviderList keeps provider names only, sorted and without repeats", () => {
+  assert.deepEqual(parseProviderList({ results: [{ provider_name: "Starz" }, { provider_name: "Hulu" }, { provider_name: "Starz" }, { provider_name: 5 }, null, { provider_name: " " }] }), ["Hulu", "Starz"]);
+  assert.deepEqual(parseProviderList(null), []);
+  assert.deepEqual(parseProviderList({ results: "x" }), []);
 });

@@ -51,12 +51,24 @@ export class TmdbClient {
 
   /** Where a show or movie can be watched, by country. A title TMDB has no entry for answers an empty map. */
   async watchProviders(kind: "tv" | "movie", tmdbId: number): Promise<ProviderMap> {
+    const body = await this.get(`/${kind}/${tmdbId}/watch/providers`);
+    return body === null ? {} : parseProviders(body);
+  }
+
+  /** Every streaming service TMDB lists for a country, so a person can tick one that none of their shows uses yet. */
+  async regionProviders(kind: "tv" | "movie", region: string): Promise<string[]> {
+    const body = await this.get(`/watch/providers/${kind}?watch_region=${encodeURIComponent(region)}`);
+    return body === null ? [] : parseProviderList(body);
+  }
+
+  /** One authorized GET. A 404 answers null; any other failure throws. */
+  private async get(path: string): Promise<unknown> {
     const token = this.options.token();
     if (!token) throw new Error("No TMDB read token is set. Set JUHANDU_TMDB_READ_TOKEN or store the secret tmdb/token.");
-    const response = await this.fetchImpl(`${API}/${kind}/${tmdbId}/watch/providers`, { headers: { authorization: `Bearer ${token}`, accept: "application/json", "user-agent": USER_AGENT }, signal: AbortSignal.timeout(20_000) });
+    const response = await this.fetchImpl(`${API}${path}`, { headers: { authorization: `Bearer ${token}`, accept: "application/json", "user-agent": USER_AGENT }, signal: AbortSignal.timeout(20_000) });
     if (response.status === 404) {
       await response.body?.cancel();
-      return {};
+      return null;
     }
     if (response.status === 401) {
       await response.body?.cancel();
@@ -66,7 +78,7 @@ export class TmdbClient {
       await response.body?.cancel();
       throw new Error(`TMDB answered HTTP ${response.status}`);
     }
-    return parseProviders(await response.json());
+    return response.json();
   }
 }
 
@@ -84,6 +96,14 @@ export function parseProviders(body: unknown): ProviderMap {
     if (OFFER_KINDS.some((k) => entry[k].length)) out[country] = entry;
   }
   return out;
+}
+
+/** The provider names in TMDB's list of services for a country, sorted. */
+export function parseProviderList(body: unknown): string[] {
+  const results = (body as { results?: { provider_name?: unknown }[] } | null)?.results;
+  const names = new Set<string>();
+  for (const r of Array.isArray(results) ? results : []) if (typeof r?.provider_name === "string" && r.provider_name.trim()) names.add(r.provider_name);
+  return [...names].sort((a, b) => a.localeCompare(b));
 }
 
 export interface WhereToWatch {

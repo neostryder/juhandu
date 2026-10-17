@@ -9,6 +9,7 @@ import type { ProviderMap, WhereToWatch } from "./tmdb.ts";
 
 /** Availability is looked up again after this long. TMDB's terms allow a cached copy for six months at most. */
 const PROVIDER_REFRESH_MS = 3 * 86_400_000;
+const REGION_LIST_REFRESH_MS = 7 * 86_400_000;
 /** Cached availability older than this is deleted, well inside the six-month limit. */
 const PROVIDER_KEEP_MS = 150 * 86_400_000;
 const PROVIDERS_PER_SYNC = 25;
@@ -98,7 +99,7 @@ export class WatchService {
       lastError: this.store.getMeta("watch:lastError") ?? "",
       region,
       services,
-      providerChoices: [...new Set([...seen, ...services])].sort((a, b) => a.localeCompare(b)),
+      providerChoices: [...new Set([...seen, ...this.regionList(region), ...services])].sort((a, b) => a.localeCompare(b)),
       manualCode: this.redirectUri === OUT_OF_BAND,
       attribution: this.tmdb?.configured() ? [TMDB_NOTICE, JUSTWATCH_CREDIT] : [],
     };
@@ -175,6 +176,7 @@ export class WatchService {
         return !cached || now - Date.parse(cached.fetchedAt) > PROVIDER_REFRESH_MS;
       })
       .slice(0, PROVIDERS_PER_SYNC);
+    await this.refreshRegionList(tmdb);
     let fetched = 0;
     for (const id of due) {
       try {
@@ -187,6 +189,30 @@ export class WatchService {
       }
     }
     return fetched;
+  }
+
+  /** The services TMDB lists for the chosen country, kept for a week, so the list a person ticks from is not limited to what their shows use. */
+  private async refreshRegionList(tmdb: TmdbClient): Promise<void> {
+    const region = this.region();
+    const saved = this.savedRegionList();
+    if (saved && saved.region === region && this.clock().getTime() - Date.parse(saved.fetchedAt) <= REGION_LIST_REFRESH_MS) return;
+    try {
+      const names = await tmdb.regionProviders("tv", region);
+      this.store.setMeta("watch:regionList", JSON.stringify({ region, fetchedAt: this.clock().toISOString(), names }));
+    } catch (error) {
+      console.warn(`Watch: the list of services for ${region} could not be fetched: ${describe(error)}`);
+    }
+  }
+
+  private savedRegionList(): { region: string; fetchedAt: string; names: string[] } | null {
+    const saved = safeParse(this.store.getMeta("watch:regionList") ?? "") as { region?: unknown; fetchedAt?: unknown; names?: unknown } | null;
+    if (!saved || typeof saved.region !== "string" || typeof saved.fetchedAt !== "string" || !Array.isArray(saved.names)) return null;
+    return { region: saved.region, fetchedAt: saved.fetchedAt, names: saved.names.filter((n): n is string => typeof n === "string") };
+  }
+
+  private regionList(region: string): string[] {
+    const saved = this.savedRegionList();
+    return saved && saved.region === region ? saved.names : [];
   }
 
   upNext(): UpNextView[] {
