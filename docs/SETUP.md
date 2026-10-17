@@ -52,7 +52,7 @@ A judge answers the yes or no, pick-one and rank questions: whether two items ar
 
 - `llm` asks the chat model. It is the default when a chat model is configured.
 - `typed` asks your own servers that speak the typed-decision protocol, `POST /v1/systemone`. List their base URLs in `JUHANDU_TYPED_URLS`, separated by commas; Juhandu uses the first one that answers and skips a failing one for a while. `JUHANDU_TYPED_MODEL` is the model name sent with each request. To send a different model for each kind of decision, set `JUHANDU_TYPED_LANE_MODEL` to a template such as `adapter-{lane}`, where `{lane}` becomes `same_story` or `pipe_ask`; the template is ignored when `JUHANDU_TYPED_MODEL` is set. A typed server is not assumed to be calibrated, so it only shadows, even when it is listed in `JUHANDU_JUDGE`, until you set `JUHANDU_TYPED_ACTS=1`. Typed servers are sent no key and are always treated as being on this machine, so they may receive private items.
-- `jev` asks the hosted Jev service from TypeSafe over the same protocol. It needs a key from `JUHANDU_JEV_KEY`, `TYPESAFE_API_KEY`, `JEV_API_KEY`, the file named by `JUHANDU_JEV_KEY_FILE`, or the secret `jev/key`. Jev is a hosted endpoint, so it gets private items only when `jev` is named in `JUHANDU_PRIVATE_ALLOW`.
+- `jev` asks the hosted Jev service from TypeSafe over the same protocol, either directly or through an Augur Jev gateway, and it needs one of the two set up. Going direct takes a key from `JUHANDU_JEV_KEY`, `TYPESAFE_API_KEY`, `JEV_API_KEY`, the file named by `JUHANDU_JEV_KEY_FILE`, or the secret `jev/key`. Going through the gateway takes its `/v1/systemone` URL in `JUHANDU_JEV_GATEWAY_URL`, such as `http://host.docker.internal:8020/v1/systemone` from a container on the same host, and its token in `JUHANDU_JEV_GATEWAY_TOKEN` or the file named by `JUHANDU_JEV_GATEWAY_TOKEN_FILE`. With both the URL and the token set, every Jev request goes to the gateway first, carrying the token as a bearer key, the consumer name `juhandu`, and a data tier of `public` for public items or `sensitive` for private ones; the gateway keeps sensitive items off hosted Jev. Juhandu sends a request straight to hosted Jev only when the gateway cannot be reached or answers with its own 502 or 503, and only if a direct key is set. Without a key, the work waits in the queue. A request the gateway refuses is never sent direct. Jev is a hosted endpoint, so it gets private items only when `jev` is named in `JUHANDU_PRIVATE_ALLOW`, whichever way the request goes.
 
 Each question is asked twice in one request, the second time phrased the other way round, and the two answers are averaged. For example, `JUHANDU_JUDGE=jev,llm` and `JUHANDU_JUDGE_SHADOW=typed` lets Jev answer, falls back to the chat model when Jev cannot, and logs a typed server's answers beside them.
 
@@ -199,8 +199,11 @@ Judges:
 | `JUHANDU_TYPED_ACTS` | off | Set to `1` to let a typed server's answers count; otherwise it only shadows. |
 | `JUHANDU_JEV_URL` | `https://api.typesafe.ai` | The Jev service. |
 | `JUHANDU_JEV_MODEL` | `jev-preview` | The Jev model. |
-| `JUHANDU_JEV_KEY` | none | The Jev key. `TYPESAFE_API_KEY` and `JEV_API_KEY` are read too. |
+| `JUHANDU_JEV_KEY` | none | The Jev key for direct requests. `TYPESAFE_API_KEY` and `JEV_API_KEY` are read too. |
 | `JUHANDU_JEV_KEY_FILE` | none | A file holding the Jev key. |
+| `JUHANDU_JEV_GATEWAY_URL` | none | The `/v1/systemone` URL of a Jev gateway. Jev requests go there first when a gateway token is set too. |
+| `JUHANDU_JEV_GATEWAY_TOKEN` | none | The gateway token, sent as a bearer key. |
+| `JUHANDU_JEV_GATEWAY_TOKEN_FILE` | none | A file holding the gateway token. |
 
 Videos:
 

@@ -47,6 +47,13 @@ function jevKey(env: Env): string | undefined {
   return file && existsSync(file) ? readFileSync(file, "utf8").trim() || undefined : undefined;
 }
 
+function gatewayToken(env: Env): string | undefined {
+  const direct = env["JUHANDU_JEV_GATEWAY_TOKEN"];
+  if (direct) return direct;
+  const file = env["JUHANDU_JEV_GATEWAY_TOKEN_FILE"];
+  return file && existsSync(file) ? readFileSync(file, "utf8").trim() || undefined : undefined;
+}
+
 /** Builds the judge from the environment. JUHANDU_JUDGE is the ordered list of backends whose answers are used (llm, typed, jev; default llm when a chat model is available), and JUHANDU_JUDGE_SHADOW lists backends that are asked the same questions only to log their answers. A self-hosted typed-decision server is not assumed to be calibrated, so it is moved to the shadow list unless JUHANDU_TYPED_ACTS=1. */
 export function buildJudge(env: Env, deps: JudgeSetupDeps): JudgeSetup {
   const notes: string[] = [];
@@ -86,12 +93,15 @@ export function buildJudge(env: Env, deps: JudgeSetupDeps): JudgeSetup {
       return new SystemOneJudge({ name: "typed", endpoints, gate, calibrated: false, onJudgment, ...(modelFor ? { modelFor } : {}), ...fetchOption });
     }
     const apiKey = jevKey(env);
-    if (!apiKey) {
-      notes.push("No Jev key is configured (JUHANDU_JEV_KEY, JUHANDU_JEV_KEY_FILE, TYPESAFE_API_KEY or JEV_API_KEY)");
+    const gatewayUrl = env["JUHANDU_JEV_GATEWAY_URL"];
+    const token = gatewayUrl ? gatewayToken(env) : undefined;
+    if (!apiKey && !(gatewayUrl && token)) {
+      notes.push("No Jev key or gateway is configured (JUHANDU_JEV_KEY, JUHANDU_JEV_KEY_FILE, TYPESAFE_API_KEY, JEV_API_KEY, or JUHANDU_JEV_GATEWAY_URL with JUHANDU_JEV_GATEWAY_TOKEN)");
       return null;
     }
     const baseUrl = env["JUHANDU_JEV_URL"] ?? "https://api.typesafe.ai";
-    return new SystemOneJudge({ name: "jev", endpoints: [{ name: "jev", baseUrl, model: env["JUHANDU_JEV_MODEL"] ?? "jev-preview", local: false, apiKey }], gate, calibrated: true, onJudgment, ...fetchOption });
+    const endpoint: SystemOneEndpoint = { name: "jev", baseUrl, model: env["JUHANDU_JEV_MODEL"] ?? "jev-preview", local: false, ...(apiKey ? { apiKey } : {}), ...(gatewayUrl && token ? { gateway: { url: gatewayUrl, token } } : {}) };
+    return new SystemOneJudge({ name: "jev", endpoints: [endpoint], gate, calibrated: true, onJudgment, ...fetchOption });
   };
 
   const usedJudges = acting.map((b) => make(b, "acted")).filter((j): j is Judge => j !== null);

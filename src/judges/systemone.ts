@@ -1,6 +1,6 @@
 import type { EgressGate, EndpointInfo } from "../models/egress.ts";
 import { assertUsable, joinUrl } from "../models/openai.ts";
-import { EndpointPool } from "../models/pool.ts";
+import { ClientError, EndpointPool } from "../models/pool.ts";
 import type { JudgmentEntry } from "../store/store.ts";
 import { JudgeError } from "./judge.ts";
 import type { Facts, Judge, JudgeContext, PickQuestion, PickVerdict, RankVerdict, YesNoQuestion, YesNoVerdict } from "./judge.ts";
@@ -10,6 +10,8 @@ export interface SystemOneEndpoint extends EndpointInfo {
   baseUrl: string;
   model: string;
   apiKey?: string;
+  /** Augur's Jev gateway. When set, a request goes there first and reaches baseUrl directly only if the gateway cannot be reached or fails on its own. */
+  gateway?: { url: string; token: string };
 }
 
 export interface SystemOneJudgeOptions {
@@ -89,16 +91,40 @@ export class SystemOneJudge implements Judge {
 
   private async post(context: JudgeContext, state: Record<string, unknown>, questions: Record<string, unknown>): Promise<Reply> {
     return this.pool.run(context.tier, async (endpoint) => {
-      const headers: Record<string, string> = { "content-type": "application/json" };
-      if (endpoint.apiKey) headers["authorization"] = `Bearer ${endpoint.apiKey}`;
-      const url = endpoint.baseUrl.endsWith("/v1/systemone") ? endpoint.baseUrl : joinUrl(endpoint.baseUrl, "/v1/systemone");
       const model = (context.lane ? this.modelFor?.(context.lane) : undefined) ?? endpoint.model;
-      const response = await this.fetchImpl(url, { method: "POST", headers, body: JSON.stringify({ model, state, questions }), signal: AbortSignal.timeout(this.timeoutMs) });
+      const body = JSON.stringify({ model, state, questions });
+      const send = (url: string, headers: Record<string, string>): Promise<Response> => this.fetchImpl(url, { method: "POST", headers, body, signal: AbortSignal.timeout(this.timeoutMs) });
+      let response: Response | null = null;
+      if (endpoint.gateway) response = await this.viaGateway(endpoint, endpoint.gateway, context, send);
+      if (response === null) {
+        const headers: Record<string, string> = { "content-type": "application/json" };
+        if (endpoint.apiKey) headers["authorization"] = `Bearer ${endpoint.apiKey}`;
+        response = await send(endpoint.baseUrl.endsWith("/v1/systemone") ? endpoint.baseUrl : joinUrl(endpoint.baseUrl, "/v1/systemone"), headers);
+      }
       assertUsable(endpoint.name, response);
-      const body = (await response.json()) as { answers?: Record<string, Answer>; model?: unknown };
-      if (!body.answers || typeof body.answers !== "object") throw new JudgeError(`${endpoint.name} returned no answers`);
-      return { answers: body.answers, model: typeof body.model === "string" ? body.model : endpoint.model };
+      const reply = (await response.json()) as { answers?: Record<string, Answer>; model?: unknown };
+      if (!reply.answers || typeof reply.answers !== "object") throw new JudgeError(`${endpoint.name} returned no answers`);
+      return { answers: reply.answers, model: typeof reply.model === "string" ? reply.model : endpoint.model };
     });
+  }
+
+  /** The gateway's answer, or null when the request should go direct: it could not be reached, or it failed on its own (502 or 503 carrying its own header). A refusal is never retried direct, because the gateway refuses on purpose (data it will not send to hosted Jev). Private items are declared sensitive so the gateway keeps them off hosted Jev. */
+  private async viaGateway(endpoint: SystemOneEndpoint, gateway: { url: string; token: string }, context: JudgeContext, send: (url: string, headers: Record<string, string>) => Promise<Response>): Promise<Response | null> {
+    const headers = { "content-type": "application/json", authorization: `Bearer ${gateway.token}`, "x-augur-consumer": "juhandu", "x-augur-data": context.tier === "private" ? "sensitive" : "public" };
+    let response: Response;
+    try {
+      response = await send(gateway.url, headers);
+    } catch {
+      if (!endpoint.apiKey) throw new Error(`${endpoint.name} gateway is unreachable and no direct key is set`);
+      return null;
+    }
+    const own = response.headers.get("x-augur-gateway") !== null;
+    if (own && (response.status === 502 || response.status === 503) && response.headers.get("x-augur-refused") === null) {
+      if (!endpoint.apiKey) throw new Error(`${endpoint.name} gateway answered ${response.status} and no direct key is set`);
+      return null;
+    }
+    if (own && response.headers.get("x-augur-refused") !== null) throw new ClientError(response.status, `${endpoint.name} gateway refused the request (${response.status})`);
+    return response;
   }
 
   private record(kind: string, question: string, input: unknown, output: unknown, model: string, context: JudgeContext): void {

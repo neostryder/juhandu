@@ -231,3 +231,65 @@ test("the judge log keeps the role of each row", async () => {
   assert.deepEqual(store.recentJudgments(5).map((j) => j.role), ["shadow", "acted"]);
   store.close();
 });
+
+const GATEWAY = "http://gateway.test/v1/systemone";
+const DIRECT = "http://direct.test/v1/systemone";
+const own = (status: number, extra: Record<string, string> = {}) => new Response("{}", { status, headers: { "x-augur-gateway": "1", ...extra } });
+const OK_ANSWERS = { answer: noul(0.9), inverse: noul(0.2) };
+
+function gatewayJudge(handler: Handler, calls: Call[], options: { direct?: boolean } = {}): SystemOneJudge {
+  const endpoint: SystemOneEndpoint = { name: "jev", baseUrl: DIRECT, model: "jev-preview", local: false, gateway: { url: GATEWAY, token: "gw-token" }, ...(options.direct === false ? {} : { apiKey: "direct-key" }) };
+  return judgeFor(handler, { endpoints: [endpoint], calls, name: "jev", calibrated: true });
+}
+
+test("the gateway is tried first with its token, the consumer and a public tier", async () => {
+  const calls: Call[] = [];
+  await gatewayJudge(() => ok(OK_ANSWERS, "jev-1.14.0"), calls).yesNo(YES_NO, CTX);
+  assert.deepEqual(calls.map((c) => c.url), [GATEWAY]);
+  assert.equal(calls[0]!.headers["authorization"], "Bearer gw-token");
+  assert.equal(calls[0]!.headers["x-augur-consumer"], "juhandu");
+  assert.equal(calls[0]!.headers["x-augur-data"], "public");
+});
+
+test("a private item is declared sensitive to the gateway", async () => {
+  const calls: Call[] = [];
+  const judge = new SystemOneJudge({ name: "jev", endpoints: [{ name: "jev", baseUrl: DIRECT, model: "jev-preview", local: false, gateway: { url: GATEWAY, token: "t" } }], gate: new EgressGate(["jev"]), calibrated: true, fetch: fakeFetch(() => ok(OK_ANSWERS), calls) });
+  await judge.yesNo(YES_NO, { tier: "private", priority: "background" });
+  assert.equal(calls[0]!.headers["x-augur-data"], "sensitive");
+});
+
+test("an unreachable gateway or its own 503 goes direct with the direct key", async () => {
+  for (const down of [new Error("refused"), own(503), own(502)]) {
+    const calls: Call[] = [];
+    await gatewayJudge((call) => (call.url === GATEWAY ? down : ok(OK_ANSWERS)), calls).yesNo(YES_NO, CTX);
+    assert.deepEqual(calls.map((c) => c.url), [GATEWAY, DIRECT]);
+    assert.equal(calls[1]!.headers["authorization"], "Bearer direct-key");
+    assert.equal(calls[1]!.headers["x-augur-consumer"], undefined);
+  }
+});
+
+test("a gateway refusal is never retried direct", async () => {
+  const calls: Call[] = [];
+  await assert.rejects(gatewayJudge(() => own(503, { "x-augur-refused": "1" }), calls).yesNo(YES_NO, CTX), ClientError);
+  assert.deepEqual(calls.map((c) => c.url), [GATEWAY]);
+});
+
+test("an upstream error from the gateway passes through without a direct retry", async () => {
+  const calls: Call[] = [];
+  await assert.rejects(gatewayJudge(() => new Response("{}", { status: 422 }), calls).yesNo(YES_NO, CTX), ClientError);
+  assert.deepEqual(calls.map((c) => c.url), [GATEWAY]);
+});
+
+test("with no direct key an unreachable gateway means no endpoint is available", async () => {
+  const calls: Call[] = [];
+  await assert.rejects(gatewayJudge(() => new Error("refused"), calls, { direct: false }).yesNo(YES_NO, CTX), NoEndpointError);
+  assert.deepEqual(calls.map((c) => c.url), [GATEWAY]);
+});
+
+test("buildJudge builds a Jev judge from the gateway settings alone", () => {
+  const env = { JUHANDU_JUDGE: "jev", JUHANDU_JEV_GATEWAY_URL: GATEWAY, JUHANDU_JEV_GATEWAY_TOKEN: "t" };
+  const setup = buildJudge(env, { provider: null, log: () => {} });
+  assert.deepEqual(setup.acting, ["jev"]);
+  assert.ok(setup.judge);
+  assert.equal(buildJudge({ JUHANDU_JUDGE: "jev", JUHANDU_JEV_GATEWAY_URL: GATEWAY }, { provider: null, log: () => {} }).judge, null, "a gateway URL without a token is not enough");
+});
