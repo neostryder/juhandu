@@ -70,6 +70,12 @@ export class McpServer {
     return this.deps.settings().includePrivate || (this.tiers().get(sourceId) ?? "private") === "public";
   }
 
+  /** Whether the assistant may change this item: the same capability that lets it read the item. */
+  private canChange(itemId: number): boolean {
+    const item = this.deps.store.listItems({ itemId, view: "all", limit: 1 })[0];
+    return !!item && this.visible(item.sourceId);
+  }
+
   private itemView(item: Item, folders: Map<number, string>, full = false): Json {
     return {
       id: item.id,
@@ -249,7 +255,7 @@ export class McpServer {
           const vote = args["vote"] === "like" ? 1 : args["vote"] === "dislike" ? -1 : args["vote"] === "clear" ? 0 : null;
           if (vote === null) throw new ToolError("vote must be like, dislike or clear");
           const reason = typeof args["reason"] === "string" ? args["reason"].trim().slice(0, 200) : "";
-          if (!store.setVote(id, vote, vote === 0 ? "" : reason)) throw new ToolError("There is no such item");
+          if (!this.canChange(id) || !store.setVote(id, vote, vote === 0 ? "" : reason)) throw new ToolError("There is no such item");
           return { ok: true, item_id: id, vote: args["vote"] };
         },
       },
@@ -264,7 +270,8 @@ export class McpServer {
           const ids = Array.isArray(args["item_ids"]) ? args["item_ids"] : [];
           if (!ids.length || ids.length > 200 || !ids.every((i) => Number.isInteger(i) && i > 0)) throw new ToolError("item_ids must hold 1 to 200 item ids");
           const read = args["read"] !== false;
-          const changed = read ? store.markItemsRead(ids as number[]) : (ids as number[]).filter((id) => store.setRead(id, false)).length;
+          const allowed = (ids as number[]).filter((id) => this.canChange(id));
+          const changed = read ? store.markItemsRead(allowed) : allowed.filter((id) => store.setRead(id, false)).length;
           return { ok: true, changed };
         },
       },

@@ -218,11 +218,12 @@ export class Proposer {
   }
 
   private async draft(members: VotedItem[], opposite: VotedItem[], sign: number, priority: Priority): Promise<{ draft: Draft | null; model: string }> {
-    const tier: DataTier = members.some((m) => m.tier === "private") ? "private" : "public";
+    const sentOpposite = opposite.slice(0, 6);
+    const tier: DataTier = [...members, ...sentOpposite].some((m) => m.tier === "private") ? "private" : "public";
     const safe = (text: string, max: number) => JSON.stringify(text.slice(0, max).replace(/<\/?(votes|others)>/gi, " "));
     const line = (v: VotedItem) => `- ${safe(v.title, 140)}${v.reason ? ` (reason: ${safe(v.reason, 200)})` : ""}`;
     const shown = members.slice(0, 12);
-    const others = opposite.slice(0, 6).map((v) => `- ${safe(v.title, 120)}`);
+    const others = sentOpposite.map((v) => `- ${safe(v.title, 120)}`);
     const body = [`The reader ${sign < 0 ? "DISLIKED" : "LIKED"} these ${members.length} items:`, "<votes>", ...shown.map(line), "</votes>"];
     if (others.length) body.push(`The reader ${sign < 0 ? "LIKED" : "DISLIKED"} these items, which the rule must not catch:`, "<others>", ...others, "</others>");
     const result = await (this.provider as ModelProvider).chat({

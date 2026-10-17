@@ -123,6 +123,28 @@ test("the folder backend stores one file per secret, reads older key files, and 
   }
 });
 
+test("deleting a secret removes its older key file, and a failing backend is reported", async () => {
+  const folder = tempDir();
+  try {
+    writeFileSync(join(folder, "interactive.key"), "legacy-key-value" + String.fromCharCode(10));
+    const withAlias = new DirBackend(folder, { "cogitator/interactive": "interactive.key" });
+    await withAlias.delete("cogitator/interactive");
+    assert.equal(await withAlias.get("cogitator/interactive"), undefined, "the older key file is gone too");
+    const stuck: SecretBackend = { id: "stuck", writable: true, available: async () => true, get: async () => "x-value-stuck", set: async () => undefined, delete: async () => Promise.reject(new Error("denied")) };
+    const good = new DirBackend(join(folder, "g"), {});
+    await good.set("source/1", "kept-value-1");
+    await assert.rejects(new SecretStore([stuck, good], new Redactor()).delete("source/1"), /Could not remove/);
+    assert.equal(await good.get("source/1"), undefined, "the other backends were still cleared");
+    const failing: Run = async () => ({ code: 5, stdout: "", stderr: "" });
+    await assert.rejects(new OsBackend(failing, "linux").delete("source/2"), /libsecret delete failed/);
+    await assert.rejects(new OsBackend(failing, "darwin").delete("source/2"), /Keychain delete failed/);
+    const missing: Run = async () => ({ code: 44, stdout: "", stderr: "" });
+    await new OsBackend(missing, "darwin").delete("source/2");
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+});
+
 test("the Bitwarden backend needs a token and the bws tool, and looks secrets up by name", async () => {
   const calls: string[][] = [];
   const runner: Run = async (_file, args) => {

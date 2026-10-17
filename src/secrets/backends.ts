@@ -123,6 +123,9 @@ export class DirBackend implements SecretBackend {
 
   async delete(name: string): Promise<void> {
     await rm(this.file(name), { force: true });
+    // The older plain file is read when no new file exists, so it has to go too or the secret stays readable.
+    const alias = this.aliases[name];
+    if (alias) await rm(join(this.dir, alias), { force: true });
   }
 }
 
@@ -318,11 +321,12 @@ export class OsBackend implements SecretBackend {
 
   async delete(name: string): Promise<void> {
     if (this.platform === "win32") {
-      await this.windows("delete", name);
+      if ((await this.windows("delete", name)).code !== 0) throw new Error("Credential Manager delete failed");
     } else if (this.platform === "darwin") {
-      await this.runner("security", ["delete-generic-password", "-s", OS_SERVICE, "-a", name]);
+      const result = await this.runner("security", ["delete-generic-password", "-s", OS_SERVICE, "-a", name]);
+      if (result.code !== 0 && result.code !== 44) throw new Error("Keychain delete failed");
     } else {
-      await this.runner("secret-tool", ["clear", "service", OS_SERVICE, "account", name]);
+      if ((await this.runner("secret-tool", ["clear", "service", OS_SERVICE, "account", name])).code !== 0) throw new Error("libsecret delete failed");
     }
   }
 }

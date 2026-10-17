@@ -26,6 +26,9 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 - [Visible] [Compatibility] **A single private or restricted YouTube video no longer pauses Gemini for an hour.** When Google answers a video request with a 403, Juhandu checks the key with a plain request that names no video, and pauses Gemini only if that request is refused too; otherwise only that video is marked as one Gemini cannot read, and the next video goes to Gemini as usual. A 401 or an invalid-key 400 still pauses Gemini at once.
 - [Visible] [Compatibility] **Screens loaded on demand now carry the version in their address.** Before this, an upgrade could leave a cache serving the old copy of a screen.
 - [Visible] [Compatibility] **The home-screen manifest is now requested with the sign-in cookie.** Behind an access proxy, the phone now finds the app's name and icon instead of a login page.
+- [Visible] [Security] **Assistant write tools only change items the assistant can read.** The vote_item and mark_read MCP tools leave items from private feeds untouched unless private feeds are turned on for the assistant.
+- [Visible] [Security] **Rule proposal drafts go to the model at the private tier whenever they include a title from a private feed.** Every liked or disliked title in the request now sets the tier, where before only the items being clustered did.
+- [Visible] [Security] **Removing a stored secret clears it from every backend, including an older key file kept beside the current store.** The removal reports an error if any backend could not delete the secret. Removing a feed deletes its stored login first and keeps the feed if that step fails, so the owner can retry.
 
 ## [0.2.1] - 2026-10-10
 

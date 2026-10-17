@@ -137,7 +137,16 @@ export class SecretStore {
     assertSecretName(name);
     this.cache.delete(name);
     this.origins.delete(name);
-    for (const backend of (await this.usableBackends()).filter((b) => b.writable)) await safe(() => backend.delete(name), undefined);
+    // Every writable backend is tried, and a failure is reported afterward so a secret that is still stored never looks removed.
+    let failed = 0;
+    for (const backend of (await this.usableBackends()).filter((b) => b.writable)) {
+      try {
+        await backend.delete(name);
+      } catch {
+        failed++;
+      }
+    }
+    if (failed) throw new Error("Could not remove the stored secret from every backend");
   }
 
   /** A JSON secret (a login is a few fields). Returns undefined when absent or unreadable. */

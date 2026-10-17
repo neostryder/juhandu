@@ -518,8 +518,8 @@ export function createApp(deps: AppDeps): Server {
         const source = store.getSource(id);
         if (!source) throw new HttpError(404, "No such source");
         if (method === "DELETE" && !sourceMatch[2]) {
-          const removed = store.removeSource(id);
           if (credentials && source.auth) await credentials.remove(id);
+          const removed = store.removeSource(id);
           return send(res, 200, { removed });
         }
         if (method === "POST" && sourceMatch[2]) return send(res, 200, await ingestor.pollSource(source));

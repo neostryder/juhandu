@@ -134,6 +134,20 @@ test("a write is refused while writes are off, and works with them on", async ()
   store.close();
 });
 
+test("writes cannot touch items from private feeds unless private feeds are allowed", async () => {
+  const { tool, settings, ids, store } = await fixture({ allowWrites: true });
+  const state = (id: number) => store.listItems({ itemId: id, view: "all", limit: 1, wide: true })[0]!;
+  assert.ok((await tool("vote_item", { item_id: ids["w1"], vote: "like" })).error, "a private item reads as missing");
+  assert.equal(state(ids["w1"]!).vote, 0);
+  const marked = await tool("mark_read", { item_ids: [ids["w1"], ids["p1"]] });
+  assert.equal(marked.data.changed, 1, "only the public item changes");
+  assert.equal(state(ids["w1"]!).read, false);
+  settings.includePrivate = true;
+  assert.ok(!(await tool("vote_item", { item_id: ids["w1"], vote: "like" })).error);
+  assert.equal(state(ids["w1"]!).vote, 1);
+  store.close();
+});
+
 test("tool answers carry the untrusted-text note and keep feed text short", async () => {
   const { tool, store, ids } = await fixture();
   const item = await tool("get_item", { id: ids["p1"] });

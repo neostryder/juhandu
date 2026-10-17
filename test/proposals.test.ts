@@ -193,6 +193,21 @@ test("a draft of words that the votes back up is proposed, once, and never goes 
   w.store.close();
 });
 
+test("a draft that shows a private feed's titles to the model is sent at the private tier", async () => {
+  const w = world([...cryptoTitles, ...rustTitles, ...otherTitles]);
+  for (const t of cryptoTitles) vote(w, t, -1);
+  const secret = w.store.addSource({ kind: "feed", url: "https://private.example/feed", tier: "private" });
+  w.store.upsertItems(secret.id, [item("priv1", "Quarterly numbers for the board")]);
+  const privateItem = w.store.listItems({ view: "all", limit: 200, wide: true }).find((i) => i.title === "Quarterly numbers for the board");
+  assert.ok(privateItem);
+  assert.ok(w.store.setVote(privateItem.id, 1, ""));
+  const seen: ChatRequest[] = [];
+  await proposerFor(w, wordsReply, seen).run();
+  assert.match(seen[0]?.messages[1]?.content ?? "", /Quarterly numbers/, "the private title reached the prompt");
+  assert.equal(seen[0]?.tier, "private", "so the request is gated as private");
+  w.store.close();
+});
+
 test("a draft that would catch something the user liked, or that smells of injection, is dropped", async () => {
   const w = world([...cryptoTitles, ...rustTitles, "Coin collecting for beginners", ...otherTitles]);
   for (const t of cryptoTitles) vote(w, t, -1);
