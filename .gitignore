@@ -7,3 +7,5 @@ data/
 .env
 tmp/
 local/
+backup.env
+backup.log

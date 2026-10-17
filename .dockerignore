@@ -13,3 +13,6 @@ docs
 .env
 Dockerfile
 compose.yaml
+backup.env
+backup.log
+scripts

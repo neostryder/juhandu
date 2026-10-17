@@ -10,6 +10,7 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 - [Visible] [UI] **Pulling down at the top of Reading on a phone refreshes it.** While the app is open it also checks for new items every minute and shows a "N new. Show them" pill, so the list stays put under the item being read.
 - [Visible] [UI] **The home-screen icon shows the unread count and has shortcuts.** On systems that support app badges, the installed icon carries the number of unread items. A long press on it opens Briefing, Reading, Filtered out, or Add a feed.
 - [Visible] [UI] **Juhandu appears in the phone's share sheet.** Sharing a link to it opens Add a feed with the address already filled in.
+- [Visible] [Backup] **A nightly copy of the database can go to an S3-compatible bucket such as Cloudflare R2.** `scripts/backup-to-r2.sh` runs on the Docker host, takes a consistent copy while Juhandu keeps running, and can download the newest backup for a restore.
 
 ### Changed
 

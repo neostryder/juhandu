@@ -122,6 +122,40 @@ docker compose up -d --build
 docker compose down -v
 ```
 
+## Off-machine backups
+
+`scripts/backup-to-r2.sh` runs on the Docker host and copies the database to an S3-compatible bucket such as Cloudflare R2. The running container makes a consistent copy with SQLite's `VACUUM INTO`, so Juhandu keeps working during the backup. If `sqlite3` is installed on the host, the script checks the copy with `PRAGMA integrity_check`. Then it compresses the copy, uploads it as `juhandu/juhandu-<UTC timestamp>.sqlite.gz`, and compares the uploaded size with the local one. It needs curl 7.75 or newer for request signing, and hands the access key to curl on standard input so it stays out of process listings.
+
+Only the database is copied. Feed logins stay in the data volume's secrets folder, so after a restore the feeds that need a login ask for it again.
+
+Settings come from the environment, a `backup.env` file next to `compose.yaml`, or the file named by `JUHANDU_BACKUP_ENV`. Run `chmod 600 backup.env` so only its owner can read it.
+
+| Variable | Default | What it changes |
+| --- | --- | --- |
+| `JUHANDU_R2_ACCOUNT_ID` | required | The account id. The endpoint is `https://<account id>.r2.cloudflarestorage.com`, region `auto`. |
+| `JUHANDU_R2_ACCESS_KEY_ID` | required | The access key id. |
+| `JUHANDU_R2_SECRET_ACCESS_KEY` | required | The secret access key. |
+| `JUHANDU_R2_BUCKET` | `juhandu-backups` | The bucket. |
+| `JUHANDU_BACKUP_CONTAINER` | `juhandu-juhandu-1` | The container to copy from. |
+| `JUHANDU_BACKUP_DB` | `/data/juhandu.sqlite` | The database path in the container. |
+| `JUHANDU_BACKUP_DOCKER` | `docker` | The Docker command. |
+
+On R2, use a private bucket and an Object Read and Write token limited to it. The script never deletes anything, so add a lifecycle rule that deletes objects after 30 days.
+
+With no argument or `backup`, the script backs up now. `latest` prints the newest key. `restore OUT` downloads the newest backup to the file `OUT` and checks it:
+
+```
+scripts/backup-to-r2.sh restore juhandu.sqlite
+```
+
+A restore never touches the live database. To put the copy in use, stop the container, replace `/data/juhandu.sqlite` in the data volume with it, and start the container again.
+
+For a backup every night at 03:40, add this line with `crontab -e`, with your own path to the project folder. On macOS, a launchd job does the same.
+
+```
+40 3 * * * /path/to/juhandu/scripts/backup-to-r2.sh
+```
+
 ## Settings
 
 Server and briefing:
