@@ -36,6 +36,8 @@ import { MIN_HUMAN_TEST, MIN_HUMAN_TRAIN, buildTrainingExport, parseLanes, toJso
 import type { McpAccess } from "../mcp/access.ts";
 import { cameThroughProxy } from "../mcp/access.ts";
 import type { AppSettings } from "../settings/settings.ts";
+import { TraktAuthError, TraktHttpError, TraktNotConnected, TraktRateLimited } from "../watch/trakt.ts";
+import type { WatchService } from "../watch/watch.ts";
 import { SettingsError } from "../settings/settings.ts";
 
 export interface AppDeps {
@@ -53,6 +55,8 @@ export interface AppDeps {
   summarizer?: ItemSummarizer;
   /** Optional: reads videos into text. Without it, /api/video reports that reading is off. */
   videoReader?: VideoReader;
+  /** Optional: the Watch module (Trakt sign-in, up next, where to watch). Without it, /api/watch reports that it is off. */
+  watch?: WatchService;
   /** Builds briefings from stored summaries; defaults to one over the store. */
   briefer?: Briefer;
   /** Runs pipes; defaults to one over the store with no model, so questions for the AI wait. */
@@ -121,6 +125,16 @@ class HttpError extends Error {
     super(message);
     this.status = status;
   }
+}
+
+/** Turns a Trakt failure into the answer a screen can show; anything else is left to the general handler. */
+function watchFailure(error: unknown): never {
+  if (error instanceof TraktNotConnected) throw new HttpError(409, "Trakt is not connected");
+  if (error instanceof TraktAuthError) throw new HttpError(400, error.message);
+  if (error instanceof TraktRateLimited) throw new HttpError(429, error.message);
+  if (error instanceof TraktHttpError) throw new HttpError(502, error.message);
+  if (error instanceof RangeError) throw new HttpError(422, error.message);
+  throw error;
 }
 
 function send(res: ServerResponse, status: number, body: unknown): void {
@@ -435,6 +449,65 @@ export function createApp(deps: AppDeps): Server {
         if (typeof body["dismissed"] !== "boolean") throw new HttpError(400, "dismissed must be true or false");
         store.setMeta("setup:dismissed", body["dismissed"] ? "1" : "0");
         return send(res, 200, { dismissed: body["dismissed"] });
+      }
+      if (path.startsWith("/api/watch")) {
+        const watch = deps.watch;
+        if (!watch) throw new HttpError(503, "Watch is not available");
+        if (path === "/api/watch" && method === "GET") return send(res, 200, await watch.status());
+        if (path === "/api/watch/up-next" && method === "GET") return send(res, 200, { items: watch.upNext() });
+        if (path === "/api/watch/connect" && method === "POST") {
+          const status = await watch.status();
+          if (!status.traktConfigured) throw new HttpError(503, "No Trakt client id is set. Set JUHANDU_TRAKT_CLIENT_ID or store the secret trakt/client_id.");
+          return send(res, 200, watch.start());
+        }
+        if (path === "/api/watch/connect/finish" && method === "POST") {
+          const body = await readJson(req);
+          if (typeof body["code"] !== "string" || !body["code"].trim() || typeof body["state"] !== "string") throw new HttpError(400, "A code and a state are required");
+          try {
+            await watch.finish(body["code"], body["state"]);
+          } catch (error) {
+            watchFailure(error);
+          }
+          const synced = await watch.sync().then(() => "", (error: unknown) => (error instanceof Error ? error.message : "The first sync failed"));
+          return send(res, 200, { ...(await watch.status()), ...(synced ? { syncError: synced } : {}) });
+        }
+        if (path === "/api/watch/callback" && method === "GET") {
+          const code = url.searchParams.get("code");
+          const state = url.searchParams.get("state");
+          let place = "/#/watch";
+          if (!code || !state) place = "/#/watch/denied";
+          else {
+            try {
+              await watch.finish(code, state);
+              void watch.sync().catch(() => {});
+            } catch {
+              place = "/#/watch/denied";
+            }
+          }
+          res.writeHead(302, { ...SECURITY_HEADERS, location: place, "cache-control": "no-store" });
+          return void res.end();
+        }
+        if (path === "/api/watch/connect" && method === "DELETE") {
+          await watch.disconnect();
+          return send(res, 200, await watch.status());
+        }
+        if (path === "/api/watch/sync" && method === "POST") {
+          try {
+            return send(res, 200, { ...(await watch.sync()), items: watch.upNext() });
+          } catch (error) {
+            watchFailure(error);
+          }
+        }
+        if (path === "/api/watch/settings" && method === "PUT") {
+          const body = await readJson(req);
+          try {
+            watch.saveSettings(body);
+          } catch (error) {
+            watchFailure(error);
+          }
+          return send(res, 200, await watch.status());
+        }
+        throw new HttpError(404, "Not found");
       }
       if (method === "GET" && path === "/api/video") {
         const summary = store.videoSummary();

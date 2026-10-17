@@ -11,6 +11,8 @@ const KEY_SECRETS: { name: string; variable: string; unlessSet: string[] }[] = [
   { name: "transcribe/key", variable: "JUHANDU_TRANSCRIBE_KEY", unlessSet: ["JUHANDU_TRANSCRIBE_KEY"] },
   { name: "vision/key", variable: "JUHANDU_VISION_KEY", unlessSet: ["JUHANDU_VISION_KEY"] },
   { name: "youtube/key", variable: "JUHANDU_YOUTUBE_API_KEY", unlessSet: ["JUHANDU_YOUTUBE_API_KEY"] },
+  { name: "trakt/client_id", variable: "JUHANDU_TRAKT_CLIENT_ID", unlessSet: ["JUHANDU_TRAKT_CLIENT_ID"] },
+  { name: "tmdb/token", variable: "JUHANDU_TMDB_READ_TOKEN", unlessSet: ["JUHANDU_TMDB_READ_TOKEN"] },
 ];
 
 /** A copy of the environment with the stored model keys filled in. A key set in the environment or a key file always wins, so old setups keep working. */

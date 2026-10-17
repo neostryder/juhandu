@@ -60,13 +60,19 @@ Juhandu has an MCP server so an AI assistant can read your briefing, items, feed
 
 For a single YouTube video, Juhandu reads the video before summarizing it, trying three ways in order. Gemini can read a public video from its address with your Google API key. The video's captions can be fetched with yt-dlp and digested by your chat model. Juhandu can also pull the audio and a few frames itself with yt-dlp and ffmpeg and send them to a speech server and a vision server you configure; this way skips videos over an hour long. The Connect screen sets up each way, tests it, and says why any of them is off.
 
+### Watch
+
+The Watch screen shows what to watch next from the shows you follow on Trakt. For each show it gives the next episode, such as S02E03 and its title, a progress bar of how many aired episodes you have seen, and either a note that the episode is out or a countdown to when it airs. Under each show are the services that carry it in your country, with the ones you subscribe to listed first, taken from TMDB's watch-provider data (which TMDB gets from JustWatch). Juhandu only reads from Trakt and never marks anything watched. On a phone, Watch is under More.
+
+Signing in needs only a Trakt app's client id, and Juhandu never sees your Trakt password. To turn it on, create a Trakt app and, for where to watch, get a TMDB read token, as [the setup guide](docs/SETUP.md#watch-trakt-and-tmdb) describes.
+
 ### Teaching your own judge
 
 Every yes or no, pick-one and rank decision a model makes is logged in the database with the question and the model that answered. The Connect screen's Teach your own judge section turns these logs and your votes into practice questions for training a small local judge, with one download for each kind of decision: whether two items are the same story, the questions your pipes ask, and whether you would want to read an item. Items from private feeds are left out of those downloads. [docs/SETUP.md](docs/SETUP.md) describes the file format.
 
 ### The web app
 
-The screens are Briefing, Reading, Filtered out, Rules, Feeds, Pipes, and Connect. On a narrow screen a tab bar runs along the bottom with the rest under More. The theme follows the system, and a button switches between system, light and dark. The app installs from the browser, and offline it shows the last items and briefings it loaded, marked as a saved copy.
+The screens are Briefing, Reading, Filtered out, Rules, Feeds, Pipes, Watch, and Connect. On a narrow screen a tab bar runs along the bottom with the rest under More. The theme follows the system, and a button switches between system, light and dark. The app installs from the browser, and offline it shows the last items and briefings it loaded, marked as a saved copy.
 
 ## Requirements
 
@@ -103,6 +109,8 @@ The Connect screen connects models while Juhandu runs: it saves each key in the 
 Every feed is public or private. Public items may go to any model endpoint you configure. Private items go only to endpoints on this machine and to endpoints you name in `JUHANDU_PRIVATE_ALLOW`. An endpoint counts as on this machine when its address is a loopback address, unless its `_LOCAL` variable or its switch on the Connect screen says otherwise. Cogitator and typed-decision servers are always treated as local, so point them only at machines you control. Gemini only ever sees public videos, and Telegram and Discord never receive private items.
 
 The server contacts the feeds you subscribe to, YouTube when you add a channel or playlist, and the services you configure. The web page loads two fonts from Google Fonts, so your browser contacts fonts.googleapis.com and fonts.gstatic.com; without them the app falls back to fonts already on your device.
+
+For the Watch screen, the server contacts api.trakt.tv and api.themoviedb.org, and your browser loads posters from Trakt's image host. Your Trakt sign-in is kept only in the secret store, nothing from Watch is sent to a model, and nothing is written back to Trakt.
 
 ## More
 

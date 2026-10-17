@@ -15,6 +15,7 @@ const SCREENS = /** @type {Record<string, () => Promise<unknown>>} */ ({
   rules: () => import("./rules.js"),
   feeds: () => import("./feeds.js"),
   pipes: () => import("./pipes.js"),
+  watch: () => import("./watch.js"),
   connect: () => import("./connect.js"),
 });
 window.addEventListener("load", () => {
@@ -81,11 +82,12 @@ const VIEWS = /** @type {const} */ ([
   ["rules", "Rules"],
   ["feeds", "Feeds"],
   ["pipes", "Pipes"],
+  ["watch", "Watch"],
   ["connect", "Connect"],
 ]);
 
 class VzApp extends HTMLElement {
-  /** @type {"briefing" | "reading" | "filtered" | "rules" | "feeds" | "pipes" | "connect"} */
+  /** @type {"briefing" | "reading" | "filtered" | "rules" | "feeds" | "pipes" | "watch" | "connect"} */
   view = "briefing";
 
   // The list on screen: the ids shown, where the next page starts, and a counter that lets a slow answer for an old list be dropped.
@@ -131,7 +133,7 @@ class VzApp extends HTMLElement {
 
   viewFromHash() {
     const name = location.hash.replace(/^#\/?/, "").split("/")[0];
-    return name === "reading" || name === "filtered" || name === "rules" || name === "feeds" || name === "pipes" || name === "connect" ? name : "briefing";
+    return name === "reading" || name === "filtered" || name === "rules" || name === "feeds" || name === "pipes" || name === "watch" || name === "connect" ? name : "briefing";
   }
 
   /** @param {string} path */
@@ -148,7 +150,7 @@ class VzApp extends HTMLElement {
     for (const [name] of VIEWS) {
       for (const tab of this.all(`[data-view="${name}"]`)) tab.setAttribute("aria-current", name === this.view ? "page" : "false");
     }
-    this.$("#more-tab").setAttribute("aria-current", this.view === "rules" || this.view === "feeds" || this.view === "pipes" || this.view === "connect" ? "page" : "false");
+    this.$("#more-tab").setAttribute("aria-current", this.view === "rules" || this.view === "feeds" || this.view === "pipes" || this.view === "watch" || this.view === "connect" ? "page" : "false");
     const briefing = this.$("vz-briefing");
     briefing.hidden = this.view !== "briefing";
     if (this.view === "briefing") /** @type {any} */ (briefing).load();
@@ -170,6 +172,8 @@ class VzApp extends HTMLElement {
     open("feeds", feeds, (element) => element.load());
     const pipes = this.$("vz-pipes");
     open("pipes", pipes, (element) => element.load());
+    const watch = this.$("vz-watch");
+    open("watch", watch, (element) => element.load(location.hash.split("/")[2] ?? ""));
     const connect = this.$("vz-connect");
     open("connect", connect, (element) => element.load(location.hash.split("/")[2] ?? ""));
     const setup = this.$("vz-setup");
@@ -178,7 +182,7 @@ class VzApp extends HTMLElement {
     if (showItems) this.refresh();
     if (this.view === "reading" && location.hash.split("/")[2] === "add") queueMicrotask(() => this.$("#url").focus());
     this.loadAsk();
-    for (const shown of [briefing, items, rules, feeds, pipes, connect]) {
+    for (const shown of [briefing, items, rules, feeds, pipes, watch, connect]) {
       if (shown.hidden) continue;
       shown.classList.remove("enter");
       void shown.offsetWidth;
@@ -484,7 +488,7 @@ class VzApp extends HTMLElement {
         clearNote.textContent = "There was no offline copy to clear.";
       }
     } });
-    sheet.append(el("h2", { text: "More" }), link("rules", "Rules"), link("feeds", "Feeds"), link("pipes", "Pipes"), link("connect", "Connect"), el("hr"), install, clear, clearNote);
+    sheet.append(el("h2", { text: "More" }), link("rules", "Rules"), link("feeds", "Feeds"), link("pipes", "Pipes"), link("watch", "Watch"), link("connect", "Connect"), el("hr"), install, clear, clearNote);
     more.addEventListener("click", () => dialog.showModal());
     dialog.addEventListener("click", (event) => {
       if (event.target === dialog) dialog.close();
@@ -599,6 +603,7 @@ class VzApp extends HTMLElement {
         <vz-rules hidden></vz-rules>
         <vz-feeds hidden></vz-feeds>
         <vz-pipes hidden></vz-pipes>
+        <vz-watch hidden></vz-watch>
         <vz-connect hidden></vz-connect>
       </div>
       <nav class="tabbar" id="tabbar" aria-label="Sections"></nav>

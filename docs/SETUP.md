@@ -66,6 +66,37 @@ A Video length condition needs each YouTube video's length, which Juhandu looks 
 
 Only video ids are sent to YouTube, never feed text, and items from private feeds are never looked up, so a length rule never matches them. A video whose length cannot be found, such as a live stream, a removed or private video, or one whose page states no length after 3 tries, never matches either. Until a length is known, the item stays undecided and is judged again on a later check. Set `JUHANDU_DURATIONS=off` to turn the lookups off, and length rules then never match.
 
+## Watch (Trakt and TMDB)
+
+The Watch screen needs a Trakt app's client id. Where to watch also needs a TMDB read token, and without one the list still works but shows no services. Without a client id, the screen says Trakt is not set up. Both values can be set as environment variables or stored as secrets (see [Secrets](#secrets)).
+
+1. Create an app at https://trakt.tv/oauth/applications with the redirect URI `urn:ietf:wg:oauth:2.0:oob`. To use the return address in step 4, list `https://YOUR-HOST/api/watch/callback` as a second redirect URI.
+2. Put the app's client id in `JUHANDU_TRAKT_CLIENT_ID`, or store it as the secret `trakt/client_id`. The app's client secret is not used.
+3. Copy TMDB's v4 API Read Access Token from https://www.themoviedb.org/settings/api into `JUHANDU_TMDB_READ_TOKEN`, or store it as the secret `tmdb/token`.
+4. Optionally, set `JUHANDU_TRAKT_REDIRECT_URI=https://YOUR-HOST/api/watch/callback`.
+5. Open the Watch screen and connect to Trakt.
+
+Sign-in uses Trakt's OAuth with PKCE, so no client secret is involved and Juhandu never sees your Trakt password. With the default redirect, Trakt shows a code after you approve, and you paste it into the box on the Watch screen. With `JUHANDU_TRAKT_REDIRECT_URI` set to the server's own callback, Trakt sends you straight back and there is nothing to paste. The access and refresh tokens are kept only in the secret store as `trakt/tokens`, never in the database, and are renewed automatically. Juhandu reads your watch progress, account name, and VIP flag from Trakt and never marks anything watched. When Trakt answers that something needs a VIP account, the screen says so.
+
+The country is a two-letter code, `US` by default. Under each show, the services you tick come first, then the other offers in that country, with rent and buy labeled, and a collapsed note lists other countries that stream the show, with your services marked there too. The services you can tick are the provider names Juhandu has already seen for your country.
+
+While Trakt is connected, the list refreshes about 20 seconds after start, then every 30 minutes, and whenever you press Sync now. Each show's availability is looked up again after 3 days, with at most 25 lookups per sync, and a cached answer is deleted after 150 days, inside the six months TMDB's terms allow.
+
+Disconnecting removes the saved sign-in and the local copy of your list and its availability. Nothing changes on Trakt, and your country and services are kept.
+
+TMDB's terms allow only non-commercial use. With a TMDB token set, the Watch screen shows TMDB's required notice and the JustWatch credit. TMDB data is never sent to a model.
+
+Watch has these API routes:
+
+- `GET /api/watch`: the connection status.
+- `GET /api/watch/up-next`: the Up next list.
+- `POST /api/watch/connect`: returns the Trakt address to open and a `state`.
+- `POST /api/watch/connect/finish`: takes `{code, state}` to finish signing in with a pasted code.
+- `GET /api/watch/callback`: the return address Trakt sends you back to.
+- `DELETE /api/watch/connect`: disconnects.
+- `POST /api/watch/sync`: refreshes the list now.
+- `PUT /api/watch/settings`: takes `{region, services}`.
+
 ## Running behind a reverse proxy
 
 Juhandu has no sign-in yet, so anything beyond this machine should reach it only through a reverse proxy that authenticates every request, such as Cloudflare Access. Keep `JUHANDU_HOST` at `127.0.0.1` when the proxy runs on the same machine, and set `JUHANDU_PUBLIC_HOST` to the public name the proxy serves, such as `JUHANDU_PUBLIC_HOST=news.example.com`. The API answers only requests addressed to this machine or to a name in that list, so without it the page loads but every API call from it is refused with a 403. A proxy that rewrites the `Host` header to the local address still needs the public name listed, because the browser's `Origin` header carries it.

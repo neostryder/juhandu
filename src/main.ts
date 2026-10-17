@@ -15,6 +15,9 @@ import { buildJudge } from "./judges/setup.ts";
 import { ItemSummarizer } from "./summarize/summarizer.ts";
 import { buildVideoDurations } from "./video/duration.ts";
 import { buildVideoReader } from "./video/setup.ts";
+import { TmdbClient } from "./watch/tmdb.ts";
+import { TraktClient } from "./watch/trakt.ts";
+import { WatchService } from "./watch/watch.ts";
 import { Proposer } from "./proposals/proposer.ts";
 import { LearningAsk } from "./taste/ask.ts";
 import { promoteDue } from "./taste/meter.ts";
@@ -56,9 +59,18 @@ async function buildModels(env: Record<string, string | undefined>) {
   return { provider, processor, videoReader, summarizer, judge, stories, proposer, ask };
 }
 
+/** The Watch module over the Trakt and TMDB settings. It is built again with the models, so a newly saved credential is used without a restart. */
+function buildWatch(env: Record<string, string | undefined>): WatchService {
+  const trakt = new TraktClient({ clientId: () => env["JUHANDU_TRAKT_CLIENT_ID"] || undefined, secrets });
+  const tmdb = new TmdbClient({ token: () => env["JUHANDU_TMDB_READ_TOKEN"] || undefined });
+  return new WatchService({ store, trakt, tmdb, redirectUri: env["JUHANDU_TRAKT_REDIRECT_URI"] });
+}
+
 let rewire = async (): Promise<void> => {};
 const settings = new AppSettings({ store, secrets, env: process.env, dataDir, onChange: () => rewire() });
-let models = await buildModels(await settings.effectiveEnv());
+const effectiveEnv = await settings.effectiveEnv();
+let models = await buildModels(effectiveEnv);
+let watch = buildWatch(effectiveEnv);
 const briefer = new Briefer(store);
 const pipes = new PipeEngine({ store, judge: models.judge });
 const notifier = new Notifier({ store, secrets, getBriefing: (id) => briefer.get(id) ?? undefined });
@@ -72,13 +84,16 @@ function dailyBriefingDue(now: Date): boolean {
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   return !store.listBriefings(10).some((b) => b.kind === "daily" && Date.parse(b.createdAt) >= start);
 }
-const appDeps: AppDeps = { store, ingestor, secrets, processor: models.processor, briefer, pipes, proposer: models.proposer, ask: models.ask, notifier, mcp, settings, publicHosts, webRoot: join(root, "web"), version };
+const appDeps: AppDeps = { store, ingestor, secrets, watch, processor: models.processor, briefer, pipes, proposer: models.proposer, ask: models.ask, notifier, mcp, settings, publicHosts, webRoot: join(root, "web"), version };
 if (models.videoReader) appDeps.videoReader = models.videoReader;
 if (models.summarizer) appDeps.summarizer = models.summarizer;
 const server = createApp(appDeps);
 
 rewire = async () => {
-  models = await buildModels(await settings.effectiveEnv());
+  const env = await settings.effectiveEnv();
+  models = await buildModels(env);
+  watch = buildWatch(env);
+  appDeps.watch = watch;
   appDeps.processor = models.processor;
   appDeps.proposer = models.proposer;
   appDeps.ask = models.ask;
@@ -145,7 +160,25 @@ async function readVideos(): Promise<void> {
   }
 }
 
+// The Watch list is refreshed every half hour while Trakt is connected. Trakt's limits are far above this, and a pause it asks for is simply waited out.
+let watching = false;
+async function syncWatch(): Promise<void> {
+  if (watching) return;
+  watching = true;
+  try {
+    if (!(await watch.status()).connected) return;
+    const run = await watch.sync();
+    console.log(`Watch: ${run.shows} shows in up next, availability looked up for ${run.providers}`);
+  } catch (error) {
+    console.warn(`Watch sync failed: ${error instanceof Error ? error.message : "unknown error"}`);
+  } finally {
+    watching = false;
+  }
+}
+
 const timer = setInterval(() => void tick(), 60_000);
+const watchTimer = setInterval(() => void syncWatch(), 1_800_000);
+setTimeout(() => void syncWatch(), 20_000);
 const videoTimer = setInterval(() => void readVideos(), 60_000);
 setTimeout(() => void readVideos(), 10_000);
 setTimeout(() => void tick(), 2_000);
@@ -155,6 +188,7 @@ server.listen(port, host, () => console.log(`Juhandu ${version} listening on htt
 function shutdown(): void {
   clearInterval(timer);
   clearInterval(videoTimer);
+  clearInterval(watchTimer);
   server.close(() => {
     store.close();
     process.exit(0);

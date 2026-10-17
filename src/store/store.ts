@@ -272,6 +272,27 @@ export interface StoredJudgment extends JudgmentEntry {
   createdAt: string;
 }
 
+export interface WatchUpNextRow {
+  showId: number;
+  title: string;
+  year: number | null;
+  slug: string;
+  tmdbId: number | null;
+  imdbId: string | null;
+  tvdbId: number | null;
+  poster: string;
+  status: string;
+  network: string;
+  aired: number;
+  completed: number;
+  lastWatchedAt: string | null;
+  nextSeason: number | null;
+  nextNumber: number | null;
+  nextTitle: string;
+  nextFirstAired: string | null;
+  nextRuntime: number | null;
+}
+
 const MIGRATIONS: string[] = [
   `
   CREATE TABLE reader (id INTEGER PRIMARY KEY CHECK (id = 1), created_at TEXT NOT NULL);
@@ -503,6 +524,37 @@ const MIGRATIONS: string[] = [
     seconds INTEGER NOT NULL,
     source TEXT NOT NULL,
     checked_at TEXT NOT NULL
+  );
+  `,
+  `
+  CREATE TABLE watch_up_next (
+    show_id INTEGER PRIMARY KEY,
+    title TEXT NOT NULL,
+    year INTEGER,
+    slug TEXT NOT NULL,
+    tmdb_id INTEGER,
+    imdb_id TEXT,
+    tvdb_id INTEGER,
+    poster TEXT NOT NULL,
+    status TEXT NOT NULL,
+    network TEXT NOT NULL,
+    aired INTEGER NOT NULL,
+    completed INTEGER NOT NULL,
+    last_watched_at TEXT,
+    next_season INTEGER,
+    next_number INTEGER,
+    next_title TEXT NOT NULL,
+    next_first_aired TEXT,
+    next_runtime INTEGER,
+    position INTEGER NOT NULL,
+    synced_at TEXT NOT NULL
+  );
+  CREATE TABLE tmdb_providers (
+    kind TEXT NOT NULL,
+    tmdb_id INTEGER NOT NULL,
+    payload TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (kind, tmdb_id)
   );
   `,
 ];
@@ -1396,6 +1448,73 @@ export class Store {
     this.db
       .prepare("INSERT INTO video_durations (video_id, seconds, source, checked_at) VALUES (?, ?, ?, ?) ON CONFLICT(video_id) DO UPDATE SET seconds = excluded.seconds, source = excluded.source, checked_at = excluded.checked_at")
       .run(videoId, Math.round(seconds), source, now.toISOString());
+  }
+
+  // ---- watch: Trakt up next and cached TMDB availability ----
+
+  /** Replaces the whole up-next list, keeping Trakt's order. */
+  replaceUpNext(rows: WatchUpNextRow[], now = new Date()): void {
+    const insert = this.db.prepare(
+      `INSERT INTO watch_up_next (show_id, title, year, slug, tmdb_id, imdb_id, tvdb_id, poster, status, network, aired, completed, last_watched_at, next_season, next_number, next_title, next_first_aired, next_runtime, position, synced_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(show_id) DO NOTHING`,
+    );
+    this.db.exec("BEGIN");
+    try {
+      this.db.exec("DELETE FROM watch_up_next");
+      rows.forEach((r, position) => insert.run(r.showId, r.title, r.year, r.slug, r.tmdbId, r.imdbId, r.tvdbId, r.poster, r.status, r.network, r.aired, r.completed, r.lastWatchedAt, r.nextSeason, r.nextNumber, r.nextTitle, r.nextFirstAired, r.nextRuntime, position, now.toISOString()));
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  listUpNext(): WatchUpNextRow[] {
+    return (this.db.prepare("SELECT * FROM watch_up_next ORDER BY position").all() as Row[]).map((r) => ({
+      showId: Number(r["show_id"]),
+      title: String(r["title"]),
+      year: r["year"] === null ? null : Number(r["year"]),
+      slug: String(r["slug"]),
+      tmdbId: r["tmdb_id"] === null ? null : Number(r["tmdb_id"]),
+      imdbId: r["imdb_id"] === null ? null : String(r["imdb_id"]),
+      tvdbId: r["tvdb_id"] === null ? null : Number(r["tvdb_id"]),
+      poster: String(r["poster"]),
+      status: String(r["status"]),
+      network: String(r["network"]),
+      aired: Number(r["aired"]),
+      completed: Number(r["completed"]),
+      lastWatchedAt: r["last_watched_at"] === null ? null : String(r["last_watched_at"]),
+      nextSeason: r["next_season"] === null ? null : Number(r["next_season"]),
+      nextNumber: r["next_number"] === null ? null : Number(r["next_number"]),
+      nextTitle: String(r["next_title"]),
+      nextFirstAired: r["next_first_aired"] === null ? null : String(r["next_first_aired"]),
+      nextRuntime: r["next_runtime"] === null ? null : Number(r["next_runtime"]),
+    }));
+  }
+
+  /** What the person has watched is Trakt's data; it is dropped when they disconnect. */
+  clearWatchData(): void {
+    this.db.exec("DELETE FROM watch_up_next; DELETE FROM tmdb_providers;");
+  }
+
+  getProviderCache(kind: string, tmdbId: number): { payload: string; fetchedAt: string } | undefined {
+    const row = this.db.prepare("SELECT payload, fetched_at FROM tmdb_providers WHERE kind = ? AND tmdb_id = ?").get(kind, tmdbId) as Row | undefined;
+    return row ? { payload: String(row["payload"]), fetchedAt: String(row["fetched_at"]) } : undefined;
+  }
+
+  saveProviderCache(kind: string, tmdbId: number, payload: string, now = new Date()): void {
+    this.db
+      .prepare("INSERT INTO tmdb_providers (kind, tmdb_id, payload, fetched_at) VALUES (?, ?, ?, ?) ON CONFLICT(kind, tmdb_id) DO UPDATE SET payload = excluded.payload, fetched_at = excluded.fetched_at")
+      .run(kind, tmdbId, payload, now.toISOString());
+  }
+
+  /** Cached availability older than the cutoff is deleted, so nothing from TMDB outlives the limit its terms set. */
+  purgeProviderCache(olderThan: Date): number {
+    return Number(this.db.prepare("DELETE FROM tmdb_providers WHERE fetched_at < ?").run(olderThan.toISOString()).changes);
+  }
+
+  allProviderPayloads(kind: string): string[] {
+    return (this.db.prepare("SELECT payload FROM tmdb_providers WHERE kind = ?").all(kind) as Row[]).map((r) => String(r["payload"]));
   }
 
   /** The newest items with their rule-relevant text, for previewing a draft rule. */
