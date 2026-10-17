@@ -672,6 +672,26 @@ export class Store {
     this.db.prepare("UPDATE sources SET next_fetch_at = ?, error_count = 0, last_error = NULL, etag = NULL, last_modified = NULL WHERE id = ?").run(now.toISOString(), id);
   }
 
+  /** Changes a feed's folder, data tier or polling interval. A new interval takes effect from the next fetch; the tier applies to the feed's items at once, since every item reads its feed's tier. */
+  updateSource(id: number, patch: { folder?: string; tier?: DataTier; pollMinutes?: number }): Source | undefined {
+    const sets: string[] = [];
+    const values: (string | number)[] = [];
+    if (patch.folder !== undefined) {
+      sets.push("folder = ?");
+      values.push(patch.folder);
+    }
+    if (patch.tier !== undefined) {
+      sets.push("tier = ?");
+      values.push(patch.tier);
+    }
+    if (patch.pollMinutes !== undefined) {
+      sets.push("poll_minutes = ?");
+      values.push(patch.pollMinutes);
+    }
+    if (sets.length) this.db.prepare(`UPDATE sources SET ${sets.join(", ")} WHERE id = ?`).run(...values, id);
+    return this.getSource(id);
+  }
+
   /** Records which kind of login a feed uses (never the login itself); null clears it. */
   setSourceAuth(id: number, auth: Source["auth"]): void {
     this.db.prepare("UPDATE sources SET auth = ? WHERE id = ?").run(auth, id);

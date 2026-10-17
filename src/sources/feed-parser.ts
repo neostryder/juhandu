@@ -1,5 +1,6 @@
 import { child, children, find, parseXml, textOf } from "./xml.ts";
 import type { XmlNode } from "./xml.ts";
+import { parseICalendar } from "./ical.ts";
 
 export interface ParsedItem {
   guid: string;
@@ -14,7 +15,7 @@ export interface ParsedItem {
 }
 
 export interface ParsedFeed {
-  format: "rss" | "atom" | "rdf" | "jsonfeed";
+  format: "rss" | "atom" | "rdf" | "jsonfeed" | "ical";
   title: string;
   siteUrl: string;
   items: ParsedItem[];
@@ -114,9 +115,10 @@ function parseJsonFeed(doc: Record<string, unknown>): ParsedFeed {
   };
 }
 
-/** Parses RSS 2.0, RSS 1.0 (RDF), Atom and JSON Feed. Throws FeedParseError when the body is not a feed. */
+/** Parses RSS 2.0, RSS 1.0 (RDF), Atom, JSON Feed and iCalendar. Throws FeedParseError when the body is not a feed. */
 export function parseFeed(body: string): ParsedFeed {
   const trimmed = body.replace(/^﻿/, "").trimStart();
+  if (/^BEGIN:VCALENDAR/i.test(trimmed)) return parseICalendar(trimmed);
   if (trimmed.startsWith("{")) {
     let doc: unknown;
     try {

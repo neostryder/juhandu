@@ -17,6 +17,8 @@ const STYLES = `
   .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   .row button { min-height: 40px; }
   form.replace { margin-top: 10px; display: grid; gap: 8px; }
+  details.edit { margin-top: 8px; }
+  details.edit summary { cursor: pointer; color: var(--muted); min-height: 32px; }
   .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   section.import { border: 1px solid var(--accent-dim); border-left: 4px solid var(--accent); border-radius: 6px; padding: 12px 18px 14px; margin: 0 0 16px; background: var(--bg-raised); }
   section.import h3 { margin: 0 0 4px; font-family: var(--font-display); font-weight: 500; font-size: 22px; }
@@ -217,8 +219,35 @@ class VzFeeds extends HTMLElement {
     if (source.auth) heading.append(el("span", { class: "lock", title: `This feed needs a login (${LOGIN_BADGE[source.auth]})`, text: `Login: ${LOGIN_BADGE[source.auth]}` }));
     const meta = [source.folder ? `Folder: ${source.folder}` : "", source.title ? source.url : ""].filter(Boolean).join(" - ");
     const item = el("li", { class: "feed" }, heading, meta ? el("p", { class: "meta", text: meta }) : null, source.lastError ? el("p", { class: "meta broken", role: "status", text: `Last fetch failed: ${source.lastError}` }) : null);
+    if (source.tier === "private") heading.append(el("span", { class: "lock", title: "Only local models read this feed's text", text: "Private" }));
+    item.append(this.editControls(source));
     if (source.auth) item.append(this.loginControls(source));
     return item;
+  }
+
+  /** Folder, data tier and polling interval of one feed, behind an Edit toggle. @param {any} source */
+  editControls(source) {
+    const pick = /** @type {HTMLSelectElement} */ (el("select", { "aria-label": `Who may read ${source.title || source.url}` }, el("option", { value: "public", text: "Public (a hosted model may read it)" }), el("option", { value: "private", text: "Private (only local models read it)" })));
+    pick.value = source.tier;
+    const folder = /** @type {HTMLInputElement} */ (el("input", { type: "text", maxlength: "80", placeholder: "Folder", "aria-label": "Folder", value: source.folder }));
+    const every = /** @type {HTMLSelectElement} */ (el("select", { "aria-label": "Check for new items" }));
+    const steps = [[5, "every 5 minutes"], [15, "every 15 minutes"], [30, "every 30 minutes"], [60, "every hour"], [180, "every 3 hours"], [360, "every 6 hours"], [720, "every 12 hours"], [1440, "once a day"]];
+    if (!steps.some(([m]) => m === source.pollMinutes)) steps.push([source.pollMinutes, `every ${source.pollMinutes} minutes`]);
+    steps.sort((a, b) => Number(a[0]) - Number(b[0]));
+    for (const [minutes, label] of steps) every.append(el("option", { value: String(minutes), text: `Check ${label}` }));
+    every.value = String(source.pollMinutes);
+    const form = el("form", { class: "replace" }, pick, folder, every, el("div", { class: "row" }, el("button", { type: "submit", class: "primary", text: "Save" })));
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        await api(`/api/sources/${source.id}`, { method: "PATCH", json: { tier: pick.value, folder: folder.value.trim(), pollMinutes: Number(every.value) } });
+        this.say("Saved.");
+        await this.load();
+      } catch (error) {
+        this.say(messageOf(error));
+      }
+    });
+    return el("details", { class: "edit" }, el("summary", { text: "Edit" }), form);
   }
 
   /** @param {any} source */

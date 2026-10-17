@@ -4,6 +4,15 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Added
+
+- [Visible] [UI] **Each feed has a tier, a folder, and a check interval, set when it is added and changeable later.** The add box on Reading has a Folder box and a menu for who may read the feed's text: Public lets a hosted model read it, and Private keeps it to local models. The Feeds screen labels private feeds and gives every feed an Edit control for its tier, its folder, and how often it is checked, anywhere from every 5 minutes to once a day. Items follow their feed's tier right away, so once a feed is private, hosted models stop seeing its text. In the API, `PATCH /api/sources/<id>` takes `folder`, `tier`, and `pollMinutes` (a whole number from 5 to 1440), and fields left out stay as they were.
+- [Visible] [Compatibility] **An iCalendar (.ics) address can be added like any feed.** Each event becomes an item named after its summary, and the item's text holds the start time, the place, and the description. Start times with no zone are read as UTC. Items are dated when Juhandu fetched them, so an upcoming event shows up as new. Reminder (alarm) text is dropped, and only http and https event links are kept. A calendar address with a private token in it is added as a private link, so the token never ends up as an item link. Trakt's personal shows calendar is one that works.
+
+### Changed
+
+- [Visible] [UI] **The open app checks for new items every five minutes instead of every minute when the browser asks to save data.**
+
 ## [0.3.0] - 2026-10-16
 
 ### Added

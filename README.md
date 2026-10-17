@@ -1,6 +1,6 @@
 # Juhandu
 
-Juhandu is a self-hosted feed reader that reads your feeds for you. It polls RSS, Atom and JSON feeds, YouTube channels and playlists, and ordinary sites it can find a feed for. It hides what your rules say to hide, learns what you like from your votes, writes a one-sentence summary of each item it shows, merges the same story from several sources into one line, and has a briefing ready each morning. It runs as one Node process with one SQLite file and serves a web app you can install on a phone or desktop and read offline.
+Juhandu is a self-hosted feed reader that reads your feeds for you. It polls RSS, Atom, and JSON feeds, YouTube channels and playlists, iCalendar (.ics) calendars, and ordinary sites it can find a feed for. It hides what your rules say to hide, learns what you like from your votes, writes a one-sentence summary of each item it shows, merges the same story from several sources into one line, and has a briefing ready each morning. It runs as one Node process with one SQLite file and serves a web app you can install on a phone or desktop and read offline.
 
 The AI parts run on a model server on your own machine or on any OpenAI-style endpoint you point it at. Without a model, Juhandu still works as a reader: rules that need no model keep hiding and sorting items, and briefings and pipes show headlines in place of summaries.
 
@@ -16,7 +16,7 @@ Paste a feed address or a site address on the Reading screen. Juhandu looks for 
 
 A feed that needs a login can use a private link, a user name and password, a request header or a session cookie. The login is kept in the secret store, the database holds only a masked copy of the address, and the login is sent only to the site it was given for. The Feeds screen shows a lock on these feeds with Replace login and Remove login.
 
-Every feed has a tier, public or private, which decides where its items may be sent (see Privacy below). A feed added on the Reading screen is public and has no folder. An OPML import sets one tier for all the feeds it brings in and keeps their folders, and `POST /api/sources` accepts `tier` (`public` or `private`) and `folder` for a single feed. There is no screen yet for changing the tier or folder of a feed that already exists.
+Every feed has a tier, public or private, which decides where its items may be sent (see Privacy below). Pick the tier and folder when adding a feed on Reading, and change them or the check interval with Edit on the Feeds screen, which labels private feeds. Items follow tier changes at once. OPML imports give their feeds one tier and keep their folders. `POST /api/sources` takes `tier` and `folder`, and `PATCH /api/sources/<id>` also takes `pollMinutes` (5 to 1440).
 
 ### Importing from another reader
 

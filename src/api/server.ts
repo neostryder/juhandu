@@ -71,6 +71,8 @@ export interface AppDeps {
 }
 
 const MAX_BODY = 64 * 1024;
+const MIN_POLL_MINUTES = 5;
+const MAX_POLL_MINUTES = 1440;
 /** A pasted blocklist can be a few thousand lines. */
 const MAX_IMPORT_BODY = 4 * 1024 * 1024;
 
@@ -523,6 +525,25 @@ export function createApp(deps: AppDeps): Server {
           return send(res, 200, { removed });
         }
         if (method === "POST" && sourceMatch[2]) return send(res, 200, await ingestor.pollSource(source));
+        if (method === "PATCH" && !sourceMatch[2]) {
+          const body = await readJson(req);
+          const patch: { folder?: string; tier?: DataTier; pollMinutes?: number } = {};
+          if (body["folder"] !== undefined) {
+            if (typeof body["folder"] !== "string") throw new HttpError(400, "folder must be text");
+            patch.folder = body["folder"].trim().slice(0, 80);
+          }
+          if (body["tier"] !== undefined) {
+            if (body["tier"] !== "public" && body["tier"] !== "private") throw new HttpError(400, "tier must be public or private");
+            patch.tier = body["tier"];
+          }
+          if (body["pollMinutes"] !== undefined) {
+            const minutes = body["pollMinutes"];
+            if (typeof minutes !== "number" || !Number.isInteger(minutes) || minutes < MIN_POLL_MINUTES || minutes > MAX_POLL_MINUTES) throw new HttpError(400, `pollMinutes must be a whole number from ${MIN_POLL_MINUTES} to ${MAX_POLL_MINUTES}`);
+            patch.pollMinutes = minutes;
+          }
+          if (!Object.keys(patch).length) throw new HttpError(400, "Nothing to change: send folder, tier, or pollMinutes");
+          return send(res, 200, { source: publicSource(store.updateSource(id, patch)) });
+        }
       }
       if (method === "GET" && path === "/api/rules") {
         const counts = store.ruleMatchCounts();

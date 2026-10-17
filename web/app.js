@@ -32,8 +32,8 @@ document.head.append(fonts);
 
 /** Items fetched for the first screen and for each further page while scrolling. */
 const PAGE = 40;
-/** How often the open app looks for new items and a new unread count, in milliseconds. */
-const WATCH_MS = 60_000;
+/** How often the open app looks for new items and a new unread count, in milliseconds: every minute, or every five when the browser asks to save data. */
+const WATCH_MS = /** @type {any} */ (navigator).connection?.saveData ? 300_000 : 60_000;
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -515,6 +515,7 @@ class VzApp extends HTMLElement {
         form input { flex: 1 1 280px; width: auto; }
         .login-row { flex-basis: 100%; display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
         .login-row select { flex: 0 1 340px; width: auto; }
+        .login-row input#folder { flex: 1 1 200px; }
         #add .login-fields input { flex: initial; }
         ${LOGIN_STYLES}
         #status { color: var(--muted); font-size: 15px; min-height: 24px; margin: 6px 0; }
@@ -588,7 +589,7 @@ class VzApp extends HTMLElement {
         <nav id="nav" aria-label="Sections"></nav>
         <div id="offline" role="status" hidden>You are offline. This shows what was saved on this device, and votes wait until you are back online.</div>
         <vz-setup hidden></vz-setup>
-        <form id="add"><input id="url" type="url" placeholder="Paste a feed, a site or a YouTube channel" aria-label="Feed address" required><button class="primary" type="submit">Add</button><div id="login" class="login-row"></div></form>
+        <form id="add"><input id="url" type="url" placeholder="Paste a feed, a site or a YouTube channel" aria-label="Feed address" required><button class="primary" type="submit">Add</button><div class="login-row"><select id="tier" aria-label="Who may read this feed's text"><option value="public">Public feed (a hosted model may read it)</option><option value="private">Private feed (only local models read it)</option></select><input id="folder" type="text" maxlength="80" placeholder="Folder (optional)" aria-label="Folder"></div><div id="login" class="login-row"></div></form>
         <div id="status" role="status"></div>
         <button id="newpill" class="primary" type="button" hidden></button>
         <div id="ask" hidden></div>
@@ -679,7 +680,9 @@ class VzApp extends HTMLElement {
       status.textContent = "Looking for a feed...";
       try {
         const login = picker.read();
-        const result = await api("/api/sources", { json: { ...(login?.kind === "url" ? {} : { url: input.value }), ...(login ? { login } : {}) } });
+        const tier = /** @type {HTMLSelectElement} */ (this.$("#tier")).value;
+        const folder = /** @type {HTMLInputElement} */ (this.$("#folder")).value.trim();
+        const result = await api("/api/sources", { json: { ...(login?.kind === "url" ? {} : { url: input.value }), ...(login ? { login } : {}), tier, ...(folder ? { folder } : {}) } });
         input.value = "";
         picker.clear();
         status.textContent = result.alreadySubscribed ? "Already subscribed." : `Added with ${result.inserted} items.`;
