@@ -161,9 +161,11 @@ docker compose down -v
 
 ## Off-machine backups
 
-`scripts/backup-to-r2.sh` runs on the Docker host and copies the database to an S3-compatible bucket such as Cloudflare R2. The running container makes a consistent copy with SQLite's `VACUUM INTO`, so Juhandu keeps working during the backup. If `sqlite3` is installed on the host, the script checks the copy with `PRAGMA integrity_check`. Then it compresses the copy, uploads it as `juhandu/juhandu-<UTC timestamp>.sqlite.gz`, and compares the uploaded size with the local one. It needs curl 7.75 or newer for request signing, and hands the access key to curl on standard input so it stays out of process listings.
+`scripts/backup-to-r2.sh` runs on the Docker host and copies the database to an S3-compatible bucket such as Cloudflare R2. The running container makes a consistent copy with SQLite's `VACUUM INTO`, so Juhandu keeps working during the backup. If `sqlite3` is installed on the host, the script checks the copy with `PRAGMA integrity_check`. Then it compresses and encrypts the copy, uploads it as `juhandu/juhandu-<UTC timestamp>.sqlite.gz.enc`, and compares the uploaded size with the local one. It needs curl 7.75 or newer for request signing, and hands the access key to curl on standard input so it stays out of process listings.
 
 Only the database is copied. Feed logins stay in the data volume's secrets folder, so after a restore the feeds that need a login ask for it again.
+
+Each backup is encrypted on the host before it is uploaded. The script uses `openssl` to encrypt the compressed copy with AES-256-CBC, with a key derived from `JUHANDU_BACKUP_PASSPHRASE` by PBKDF2 (600000 iterations and a random salt), and uploads it as `juhandu/juhandu-<UTC timestamp>.sqlite.gz.enc`. The passphrase reaches `openssl` through the environment, so it stays out of process listings too. Nobody can read an encrypted backup without the passphrase, so keep a copy of it somewhere other than the Docker host, such as a password manager and a printed sheet. The host needs `openssl`, which macOS and most Linux systems already have.
 
 Settings come from the environment, a `backup.env` file next to `compose.yaml`, or the file named by `JUHANDU_BACKUP_ENV`. Run `chmod 600 backup.env` so only its owner can read it.
 
@@ -176,10 +178,12 @@ Settings come from the environment, a `backup.env` file next to `compose.yaml`, 
 | `JUHANDU_BACKUP_CONTAINER` | `juhandu-juhandu-1` | The container to copy from. |
 | `JUHANDU_BACKUP_DB` | `/data/juhandu.sqlite` | The database path in the container. |
 | `JUHANDU_BACKUP_DOCKER` | `docker` | The Docker command. |
+| `JUHANDU_BACKUP_PASSPHRASE` | none | The passphrase each backup is encrypted with, at least 16 characters. Restoring an encrypted backup needs the same one. |
+| `JUHANDU_BACKUP_ENCRYPT` | `on` | With `on`, every backup is encrypted, and the script stops when the passphrase is missing, so nothing is uploaded unencrypted by accident. With `off`, plain `.sqlite.gz` copies are uploaded. |
 
 On R2, use a private bucket and an Object Read and Write token limited to it. The script never deletes anything, so add a lifecycle rule that deletes objects after 30 days.
 
-With no argument or `backup`, the script backs up now. `latest` prints the newest key. `restore OUT` downloads the newest backup to the file `OUT` and checks it:
+With no argument or `backup`, the script backs up now. `latest` prints the newest key. `restore OUT` downloads the newest backup to the file `OUT` and checks it: An encrypted backup restores only with the passphrase it was made with, and a wrong one stops the restore with an error before any usable copy is written. Older `.sqlite.gz` backups from before encryption still restore, and `restore` always takes the newest backup, whichever kind it is.
 
 ```
 scripts/backup-to-r2.sh restore juhandu.sqlite

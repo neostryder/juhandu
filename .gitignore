@@ -4,6 +4,8 @@ data/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+*.sqlite.gz
+*.sqlite.gz.enc
 .env
 tmp/
 local/
