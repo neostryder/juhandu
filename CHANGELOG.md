@@ -4,6 +4,8 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-16
+
 ### Added
 
 - [Visible] [UI] **Reading can be triaged by swipe or keyboard.** On a touch screen, swiping an item right Likes it and swiping left Dislikes it, and a swipe starts only on the card body, never on its buttons or links. On a keyboard, j and k move between items, l likes, d dislikes, o opens, and r refreshes. The shortcuts button in the Reading toolbar turns both the keys and the swipes off or back on.
