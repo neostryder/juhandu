@@ -5,6 +5,7 @@ import type { Judge } from "../judges/judge.ts";
 import { NoEndpointError } from "../models/pool.ts";
 import type { Priority } from "../models/provider.ts";
 import type { DataTier, Item, Store } from "../store/store.ts";
+import { unsafeRegexReason } from "../util/regex-safety.ts";
 import type { Condition, PipeDoc, PipeStep } from "./pipe.ts";
 
 export interface PipeEntry {
@@ -57,6 +58,7 @@ function compile(pattern: string, flags: string): RegExp | null {
   if (regexCache.has(key)) return regexCache.get(key) ?? null;
   let re: RegExp | null = null;
   try {
+    if (unsafeRegexReason(pattern)) throw new Error("unsafe");
     re = new RegExp(pattern, flags);
   } catch {
     re = null;

@@ -1,6 +1,8 @@
 // Pipes: a pipe is one declarative JSON document, so the form editor today and a graph editor later read and write the same thing.
 // A pipe takes items in (everything, a folder, one feed, or another pipe), runs ordered steps, and its output is a feed. Rules hide and boost inside Reading; a pipe makes a new stream and never touches the originals.
 
+import { unsafeRegexReason } from "../util/regex-safety.ts";
+
 export type PipeInput = { kind: "all" } | { kind: "folder"; name: string } | { kind: "feed"; id: number } | { kind: "pipe"; id: number };
 
 export const FIELDS = ["title", "text", "author", "url", "source", "folder", "tag"] as const;
@@ -69,6 +71,8 @@ function whole(value: unknown, label: string, min: number, max: number): number 
 function checkPattern(pattern: string, label: string): void {
   if (!pattern) throw new Error(`${label} needs a pattern`);
   if (pattern.length > LIMITS.pattern) throw new Error(`${label} is too long`);
+  const unsafe = unsafeRegexReason(pattern);
+  if (unsafe) throw new Error(`${label}: ${unsafe}`);
   try {
     new RegExp(pattern, "i");
   } catch {

@@ -278,7 +278,8 @@ test("login headers go only to the original origin, including across redirects",
 
   calls.length = 0;
   await fetchText("https://a.example/plain", {}, fetchImpl);
-  assert.equal(calls[0]?.redirect, "follow", "without a login the usual redirect handling is used");
+  assert.equal(calls[0]?.redirect, "manual", "redirects are followed by hand with or without a login, so every hop can be checked");
+  assert.equal(calls[0]?.headers["cookie"], undefined);
 });
 
 interface Rig {

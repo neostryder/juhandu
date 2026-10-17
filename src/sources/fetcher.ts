@@ -1,3 +1,5 @@
+import { isPrivateHost } from "../util/network.ts";
+
 export const USER_AGENT = "Juhandu/0.0 feed reader";
 const MAX_BYTES = 10 * 1024 * 1024;
 
@@ -61,31 +63,31 @@ export async function fetchText(url: string, state: ConditionalState = {}, fetch
   if (state.lastModified) headers["if-modified-since"] = state.lastModified;
   const signal = AbortSignal.timeout(timeoutMs);
   const hasLogin = Object.keys(loginHeaders).length > 0;
+  // Redirects are followed by hand. Login headers go only to the origin they were given for, so a feed cannot bounce a cookie or password to another site, and a public address cannot redirect the fetch onto this machine or a private network.
+  const origin = new URL(url).origin;
+  const startedPrivate = isPrivateHost(new URL(url).hostname);
   let target = url;
   let response: Response;
-  if (hasLogin) {
-    // Login headers go only to the origin they were given for. Redirects are followed by hand so a feed cannot bounce a cookie or password to another site.
-    const origin = new URL(url).origin;
-    for (let hops = 0; ; hops++) {
-      const sameOrigin = new URL(target).origin === origin;
-      response = await fetchImpl(target, { headers: sameOrigin ? { ...headers, ...loginHeaders } : headers, redirect: "manual", signal });
-      const location = response.headers.get("location");
-      if (response.status >= 300 && response.status < 400 && response.status !== 304 && location && hops < 5) {
-        await response.body?.cancel();
-        target = assertHttpUrl(new URL(location, target).toString()).toString();
-        continue;
-      }
-      break;
+  for (let hops = 0; ; hops++) {
+    const sameOrigin = new URL(target).origin === origin;
+    response = await fetchImpl(target, { headers: hasLogin && sameOrigin ? { ...headers, ...loginHeaders } : headers, redirect: "manual", signal });
+    const location = response.headers.get("location");
+    if (response.status >= 300 && response.status < 400 && response.status !== 304 && location) {
+      await response.body?.cancel();
+      if (hops >= 5) throw new Error("Too many redirects");
+      const next = assertHttpUrl(new URL(location, target).toString());
+      if (!startedPrivate && isPrivateHost(next.hostname)) throw new Error("A public address redirected to a private one, so the fetch was stopped");
+      target = next.toString();
+      continue;
     }
-  } else {
-    response = await fetchImpl(url, { headers, redirect: "follow", signal });
+    break;
   }
   const retry = Number(response.headers.get("retry-after"));
   const base = {
     status: response.status,
     etag: response.headers.get("etag"),
     lastModified: response.headers.get("last-modified"),
-    finalUrl: hasLogin ? target : response.url || url,
+    finalUrl: target,
     contentType: response.headers.get("content-type") ?? "",
     retryAfter: Number.isFinite(retry) && retry > 0 ? retry : null,
   };

@@ -5,6 +5,7 @@ import { FeedParseError, parseFeed } from "./feed-parser.ts";
 import type { ParsedFeed } from "./feed-parser.ts";
 import { parseYoutubeUrl, resolveYoutubeFeed } from "./youtube.ts";
 import type { SourceKind } from "../store/store.ts";
+import { isPrivateHost } from "../util/network.ts";
 
 export interface ResolvedSource {
   kind: SourceKind;
@@ -52,7 +53,10 @@ export async function resolveSource(input: string, fetchImpl: FetchLike = fetch,
   }
   const candidates = discoverFeeds(first.body, first.finalUrl).map((d) => d.url);
   for (const path of COMMON_FEED_PATHS) candidates.push(new URL(path, first.finalUrl).toString());
+  // A page the reader typed may sit on a private network on purpose, but a public page cannot point the search at one.
+  const pagePrivate = isPrivateHost(new URL(first.finalUrl).hostname);
   for (const candidate of [...new Set(candidates)]) {
+    if (!pagePrivate && isPrivateHost(new URL(candidate).hostname)) continue;
     const hit = await tryFeed(candidate, fetchImpl, headersFor);
     if (hit) return { kind: "feed", feedUrl: hit.finalUrl, title: hit.feed.title, siteUrl: hit.feed.siteUrl || first.finalUrl, feed: hit.feed };
   }

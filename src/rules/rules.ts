@@ -1,4 +1,5 @@
 import { auditPass } from "../taste/meter.ts";
+import { unsafeRegexReason } from "../util/regex-safety.ts";
 
 /** The rules engine: hard blocks always hide and win, soft weights add or subtract score, pins override soft weights only. */
 
@@ -158,6 +159,7 @@ function compileRegex(pattern: string, flags: string): RegExp | null {
   if (regexCache.has(key)) return regexCache.get(key) ?? null;
   let compiled: RegExp | null = null;
   try {
+    if (unsafeRegexReason(pattern)) throw new Error("unsafe");
     compiled = new RegExp(pattern, flags.replace(/[gy]/g, ""));
   } catch {
     compiled = null;
@@ -187,6 +189,8 @@ export function validateCondition(condition: RuleCondition): string | null {
     if (!condition.pattern) return "A regex rule needs a pattern";
     if (condition.pattern.length > 500) return "That pattern is too long";
     if (!condition.fields.length) return "Choose at least one field to search";
+    const unsafe = unsafeRegexReason(condition.pattern);
+    if (unsafe) return unsafe;
     return compileRegex(condition.pattern, condition.flags) ? null : "That pattern is not a valid regular expression";
   }
   if (!condition.sentence.trim() && !condition.examples.length) return "A semantic rule needs a sentence or an example";
