@@ -13,6 +13,7 @@ import { Notifier } from "./notify/notifier.ts";
 import { PipeEngine } from "./pipes/engine.ts";
 import { buildJudge } from "./judges/setup.ts";
 import { ItemSummarizer } from "./summarize/summarizer.ts";
+import { buildVideoDurations } from "./video/duration.ts";
 import { buildVideoReader } from "./video/setup.ts";
 import { Proposer } from "./proposals/proposer.ts";
 import { LearningAsk } from "./taste/ask.ts";
@@ -43,7 +44,7 @@ const mergeSimilarity = process.env["JUHANDU_MERGE_SIMILARITY"] ? Number(process
 async function buildModels(env: Record<string, string | undefined>) {
   const provider = buildProvider(env, dataDir, secrets);
   const embedder = buildEmbedder(provider, env);
-  const processor = new Processor(store, embedder);
+  const processor = new Processor(store, embedder, () => new Date(), buildVideoDurations(env));
   const videoReader = buildVideoReader(env, store, provider, secrets);
   const summarizer = provider?.capabilities.chat ? new ItemSummarizer(provider, store, () => new Date(), async () => (videoReader ? videoReader.anyReady() : false)) : null;
   const judgeSetup = buildJudge(env, { provider, log: (entry) => store.logJudgment(entry) });

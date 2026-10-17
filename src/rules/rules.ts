@@ -39,7 +39,16 @@ export interface DomainCondition {
   domains: string[];
 }
 
-export type RuleCondition = KeywordCondition | RegexCondition | SemanticCondition | DomainCondition;
+/** Matches a video that is shorter or longer than a length. An item that is not a known video never matches, and a video whose length is not known yet waits. */
+export interface DurationCondition {
+  type: "duration";
+  op: "under" | "over";
+  seconds: number;
+}
+
+export const MAX_DURATION_SECONDS = 7 * 86_400;
+
+export type RuleCondition = KeywordCondition | RegexCondition | SemanticCondition | DomainCondition | DurationCondition;
 
 export interface Rule {
   id: number;
@@ -68,6 +77,8 @@ export interface RuleItem {
   title: string;
   text: string;
   author: string;
+  /** The video's length in seconds. Left out when the item is not a video whose length can be known; null while the length has not been looked up yet. */
+  videoSeconds?: number | null;
 }
 
 export interface RuleHit {
@@ -168,6 +179,10 @@ export function validateCondition(condition: RuleCondition): string | null {
     if (condition.domains.length > 20_000) return "A domain rule can hold at most 20,000 domains";
     return condition.domains.every((d) => /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(d)) ? null : "Every domain must look like example.com";
   }
+  if (condition.type === "duration") {
+    if (condition.op !== "under" && condition.op !== "over") return "A video length rule is either under or over a length";
+    return Number.isInteger(condition.seconds) && condition.seconds >= 1 && condition.seconds <= MAX_DURATION_SECONDS ? null : "The length must be a whole number of seconds, from 1 second to 7 days";
+  }
   if (condition.type === "regex") {
     if (!condition.pattern) return "A regex rule needs a pattern";
     if (condition.pattern.length > 500) return "That pattern is too long";
@@ -187,6 +202,12 @@ function matchCondition(condition: RuleCondition, item: RuleItem, semantic: Sema
     const found = terms.filter((t) => haystack.includes(t));
     const ok = condition.mode === "all" ? terms.length > 0 && found.length === terms.length : found.length > 0;
     return ok ? `keyword: ${found.join(", ")}` : null;
+  }
+  if (condition.type === "duration") {
+    if (item.videoSeconds === undefined) return null;
+    if (item.videoSeconds === null) return "pending";
+    const hit = condition.op === "under" ? item.videoSeconds < condition.seconds : item.videoSeconds > condition.seconds;
+    return hit ? `duration: ${item.videoSeconds}s ${condition.op === "under" ? "<" : ">"} ${condition.seconds}s` : null;
   }
   if (condition.type === "domain") {
     const hit = matchDomain(condition, hostOf(item.url));

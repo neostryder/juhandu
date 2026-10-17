@@ -3,7 +3,9 @@ import type { Embedder } from "../models/embedder.ts";
 import { NoEndpointError } from "../models/pool.ts";
 import type { Priority } from "../models/provider.ts";
 import { evaluateRules } from "../rules/rules.ts";
-import type { RuleCondition, SemanticCondition } from "../rules/rules.ts";
+import type { Rule, RuleCondition, RuleItem, SemanticCondition } from "../rules/rules.ts";
+import { youtubeVideoId } from "../video/ids.ts";
+import type { VideoDurations } from "../video/duration.ts";
 import type { PendingItem, Store } from "../store/store.ts";
 import { TasteModel } from "../taste/taste.ts";
 import { dot } from "../taste/vectors.ts";
@@ -48,11 +50,45 @@ export class Processor {
   private readonly clock: () => Date;
   private readonly semanticCache = new Map<string, SemanticVectors>();
   private tasteCache: { key: string; model: TasteModel } | null = null;
+  private readonly durations: VideoDurations | null;
 
-  constructor(store: Store, embedder: Embedder | null, clock: () => Date = () => new Date()) {
+  constructor(store: Store, embedder: Embedder | null, clock: () => Date = () => new Date(), durations: VideoDurations | null = null) {
     this.store = store;
     this.embedder = embedder;
     this.clock = clock;
+    this.durations = durations;
+  }
+
+  private usesDurations(rules: Rule[]): boolean {
+    return rules.some((r) => r.status !== "disabled" && r.condition.type === "duration");
+  }
+
+  /** Looks up the length of the public YouTube videos waiting for a decision, when a duration rule is in use. A private-tier item is never looked up. */
+  async resolveDurations(limit = 200): Promise<number> {
+    const durations = this.durations;
+    if (!durations || !this.usesDurations(this.store.listRules())) return 0;
+    const ids = [...new Set(this.store.itemsNeedingDecision(500).flatMap((p) => (p.tier === "public" ? [youtubeVideoId(p.url)] : [])).filter((id): id is string => id !== null))];
+    const known = this.store.getVideoDurations(ids);
+    const need = ids.filter((id) => !known.has(id)).slice(0, limit);
+    if (!need.length) return 0;
+    const source = durations.mode();
+    const found = await durations.lookup(need);
+    for (const [id, seconds] of found) this.store.saveVideoDuration(id, seconds, source, this.clock());
+    return found.size;
+  }
+
+  /** The length a rule sees for an item: nothing for a non-video, a private-tier item or a video with no length to give; null while the length has not been looked up. */
+  private videoSecondsFor(item: PendingItem, known: Map<string, number>): Pick<RuleItem, "videoSeconds"> {
+    const id = youtubeVideoId(item.url);
+    if (!id || item.tier !== "public") return {};
+    const seconds = known.get(id);
+    if (seconds === undefined) return this.durations ? { videoSeconds: null } : {};
+    return seconds < 0 ? {} : { videoSeconds: seconds };
+  }
+
+  private knownDurations(rules: Rule[], items: PendingItem[]): Map<string, number> {
+    if (!this.usesDurations(rules)) return new Map();
+    return this.store.getVideoDurations(items.flatMap((i) => (i.tier === "public" ? [youtubeVideoId(i.url)] : [])).filter((id): id is string => id !== null));
   }
 
   /** The tag current vectors carry, or null when embeddings are off or the provider cannot say yet. */
@@ -120,9 +156,10 @@ export class Processor {
     const modelTag = await this.currentTag();
     await this.prepareSemantic(modelTag, priority, semanticConditions);
     const taste = modelTag ? this.taste(modelTag) : null;
+    const known = this.knownDurations(rules, pending);
     for (const item of pending) {
       const vector = modelTag ? this.store.getEmbedding(item.id, modelTag) : undefined;
-      const decision = evaluateRules(rules, { id: item.id, sourceId: item.sourceId, url: item.url, folder: item.folder, title: item.title, text: item.text, author: item.author }, (condition) => {
+      const decision = evaluateRules(rules, { id: item.id, sourceId: item.sourceId, url: item.url, folder: item.folder, title: item.title, text: item.text, author: item.author, ...this.videoSecondsFor(item, known) }, (condition) => {
         const prepared = modelTag ? this.semanticCache.get(semanticKey(modelTag, condition)) : undefined;
         return vector && prepared ? semanticSimilarity(vector, prepared) : null;
       });
@@ -138,8 +175,9 @@ export class Processor {
     const modelTag = await this.currentTag();
     if (condition.type === "semantic") await this.prepareSemantic(modelTag, "interactive", [condition]);
     const prepared = condition.type === "semantic" && modelTag ? this.semanticCache.get(semanticKey(modelTag, condition)) : undefined;
+    const known = condition.type === "duration" ? this.store.getVideoDurations(items.flatMap((i) => (i.tier === "public" ? [youtubeVideoId(i.url)] : [])).filter((id): id is string => id !== null)) : new Map<string, number>();
     const rows: PreviewRow[] = items.map((item) => {
-      const ruleItem = { id: item.id, sourceId: item.sourceId, url: item.url, folder: item.folder, title: item.title, text: item.text, author: item.author };
+      const ruleItem = { id: item.id, sourceId: item.sourceId, url: item.url, folder: item.folder, title: item.title, text: item.text, author: item.author, ...this.videoSecondsFor(item, known) };
       const vector = modelTag ? this.store.getEmbedding(item.id, modelTag) : undefined;
       let similarity: number | null = null;
       let matched = false;
@@ -157,6 +195,11 @@ export class Processor {
 
   async run(): Promise<ProcessResult> {
     const { embedded, queued } = await this.embedPending("background");
+    try {
+      await this.resolveDurations();
+    } catch (error) {
+      console.warn(`Video length lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
     const decided = await this.decidePending("background");
     return { embedded, decided, queued };
   }

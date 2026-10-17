@@ -15,7 +15,16 @@ const TYPE_CHOICES = [
   ["regex", "Pattern"],
   ["semantic", "Meaning"],
   ["domain", "Domain"],
+  ["duration", "Video length"],
 ];
+
+/** A length in seconds as words: 90 is "1 min 30 s", 7200 is "2 h". @param {number} seconds */
+function lengthText(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return [h ? `${h} h` : "", m ? `${m} min` : "", s || !seconds ? `${s} s` : ""].filter(Boolean).join(" ");
+}
 
 /** @param {string[]} fields */
 function fieldsText(fields) {
@@ -44,6 +53,7 @@ export function sentence(rule, sources) {
   else if (c.type === "regex") parts.push(` whose ${fieldsText(c.fields)} matches `, el("em", { class: "chip", text: c.pattern }));
   else if (c.type === "semantic") parts.push(" that is about ", el("em", { class: "chip", text: c.sentence }), el("span", { class: "muted", text: ` (match at ${Math.round(c.threshold * 100)}%)` }));
   else if (c.type === "domain") parts.push(" linking to ", ...chips(c.domains, 4));
+  else if (c.type === "duration") parts.push(` that is a video ${c.op === "under" ? "shorter" : "longer"} than `, el("em", { class: "chip", text: lengthText(c.seconds) }));
   return parts;
 }
 
@@ -343,6 +353,9 @@ class VzRules extends HTMLElement {
     const threshold = /** @type {HTMLInputElement} */ (el("input", { type: "range", id: "f-threshold", min: "0.3", max: "0.95", step: "0.01", value: String(c.threshold ?? 0.6) }));
     const thresholdLabel = el("span", { class: "muted" });
     const domains = /** @type {HTMLTextAreaElement} */ (el("textarea", { id: "f-domains", rows: 4, placeholder: "One domain per line, like example.com", value: (c.domains ?? []).join("\n") }));
+    const durationOp = /** @type {HTMLSelectElement} */ (el("select", { id: "f-duration-op", "aria-label": "Shorter or longer" }, el("option", { value: "under", text: "Shorter than" }), el("option", { value: "over", text: "Longer than" })));
+    durationOp.value = c.op ?? "under";
+    const durationMinutes = /** @type {HTMLInputElement} */ (el("input", { type: "number", id: "f-duration-minutes", min: "0.1", max: "10080", step: "any", value: String((c.seconds ?? 120) / 60) }));
     const makeBoxes = () => ["title", "text", "author", "url"].map((f) => el("label", { class: "check" }, el("input", { type: "checkbox", value: f, checked: (c.fields ?? ["title", "text"]).includes(f) }), ` ${FIELD_LABEL[/** @type {keyof typeof FIELD_LABEL} */ (f)]}`));
 
     const scope = /** @type {HTMLSelectElement} */ (el("select", { id: "f-scope" }, el("option", { value: "all", text: "Everywhere" }), el("option", { value: "folder", text: "One folder" }), el("option", { value: "source", text: "One feed" })));
@@ -377,7 +390,14 @@ class VzRules extends HTMLElement {
       el("label", { class: "field" }, el("span", { text: "How close a match has to be" }), threshold, thresholdLabel),
     );
     const groupDomain = el("div", { class: "group" }, el("label", { class: "field" }, el("span", { text: "Domains" }), domains), el("p", { class: "muted small", text: "Matches the domain and its subdomains, judged by each item's link." }));
-    const groups = { keyword: groupWords, regex: groupPattern, semantic: groupMeaning, domain: groupDomain };
+    const groupDuration = el(
+      "div",
+      { class: "group" },
+      el("div", { class: "field" }, el("span", { class: "legend", text: "Video length" }), durationOp),
+      el("label", { class: "field" }, el("span", { text: "Minutes" }), durationMinutes),
+      el("p", { class: "muted small", text: "Applies to YouTube videos from public feeds. A video whose length is not known yet waits until it is, and the preview counts only videos already measured." }),
+    );
+    const groups = { keyword: groupWords, regex: groupPattern, semantic: groupMeaning, domain: groupDomain, duration: groupDuration };
 
     const clean = (/** @type {string} */ text) => text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
     const fieldsOf = (/** @type {HTMLElement} */ group) => [...group.querySelectorAll("input[type=checkbox]")].filter((b) => /** @type {HTMLInputElement} */ (b).checked).map((b) => /** @type {HTMLInputElement} */ (b).value);
@@ -385,6 +405,7 @@ class VzRules extends HTMLElement {
       if (type.value === "keyword") return { type: "keyword", terms: clean(terms.value), mode: mode.value, fields: fieldsOf(groupWords) };
       if (type.value === "regex") return { type: "regex", pattern: pattern.value, flags: "i", fields: fieldsOf(groupPattern) };
       if (type.value === "semantic") return { type: "semantic", sentence: sentenceInput.value.trim(), examples: clean(examples.value), counterExamples: clean(counter.value), threshold: Number(threshold.value) };
+      if (type.value === "duration") return { type: "duration", op: durationOp.value, seconds: Math.round(Number(durationMinutes.value) * 60) };
       return { type: "domain", domains: clean(domains.value) };
     };
     const readScope = () => (scope.value === "folder" ? { type: "folder", folder: scopeValue.value } : scope.value === "source" ? { type: "source", sourceId: Number(scopeValue.value) } : { type: "all" });
@@ -467,7 +488,7 @@ class VzRules extends HTMLElement {
       sync();
       schedulePreview();
     });
-    for (const input of [terms, mode, pattern, sentenceInput, examples, counter, domains]) input.addEventListener("input", schedulePreview);
+    for (const input of [terms, mode, pattern, sentenceInput, examples, counter, domains, durationOp, durationMinutes]) input.addEventListener("input", schedulePreview);
     drawer.addEventListener("change", (e) => {
       if (/** @type {HTMLElement} */ (e.target).matches("input[type=checkbox]") && !(/** @type {HTMLElement} */ (e.target).id === "f-shadow")) schedulePreview();
     });

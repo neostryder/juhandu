@@ -60,6 +60,12 @@ Each question is asked twice in one request, the second time phrased the other w
 
 Every feed is public or private. Public items may go to any endpoint. Private items go only to endpoints on this machine and to endpoints named in `JUHANDU_PRIVATE_ALLOW`, a comma-separated list of `embeddings`, `chat`, `transcription`, `vision` and `jev`. When no allowed endpoint is available, the work on a private item waits in the queue.
 
+## Video length rules
+
+A Video length condition needs each YouTube video's length, which Juhandu looks up once per video and stores. With a key in `JUHANDU_YOUTUBE_API_KEY` or the secret `youtube/key`, lengths come from the YouTube Data API v3 (`videos.list` with `contentDetails`), up to 50 videos per request and 200 per check, and the key goes in a request header so it never appears in the address. Without a key, Juhandu reads each video's watch page instead, up to 10 pages per check. When YouTube rejects the key with a 400, 401, or 403, Juhandu switches to watch pages and does not try the API again for an hour, though a newly saved key is tried at once.
+
+Only video ids are sent to YouTube, never feed text, and items from private feeds are never looked up, so a length rule never matches them. A video whose length cannot be found, such as a live stream, a removed or private video, or one whose page states no length after 3 tries, never matches either. Until a length is known, the item stays undecided and is judged again on a later check. Set `JUHANDU_DURATIONS=off` to turn the lookups off, and length rules then never match.
+
 ## Running behind a reverse proxy
 
 Juhandu has no sign-in yet, so anything beyond this machine should reach it only through a reverse proxy that authenticates every request, such as Cloudflare Access. Keep `JUHANDU_HOST` at `127.0.0.1` when the proxy runs on the same machine, and set `JUHANDU_PUBLIC_HOST` to the public name the proxy serves, such as `JUHANDU_PUBLIC_HOST=news.example.com`. The API answers only requests addressed to this machine or to a name in that list, so without it the page loads but every API call from it is refused with a 403. A proxy that rewrites the `Host` header to the local address still needs the public name listed, because the browser's `Origin` header carries it.

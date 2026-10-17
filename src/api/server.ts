@@ -187,6 +187,7 @@ function parseCondition(raw: unknown): RuleCondition {
   if (c["type"] === "keyword") condition = { type: "keyword", terms: strings(c["terms"]), mode: c["mode"] === "all" ? "all" : "any", fields: fieldsOf(c["fields"]) };
   else if (c["type"] === "regex") condition = { type: "regex", pattern: typeof c["pattern"] === "string" ? c["pattern"] : "", flags: typeof c["flags"] === "string" ? c["flags"].replace(/[^imsu]/g, "") : "i", fields: fieldsOf(c["fields"]) };
   else if (c["type"] === "domain") condition = { type: "domain", domains: strings(c["domains"], MAX_LIST_ENTRIES).map((d) => d.trim().toLowerCase()).filter(Boolean) };
+  else if (c["type"] === "duration") condition = { type: "duration", op: c["op"] === "over" ? "over" : "under", seconds: typeof c["seconds"] === "number" ? c["seconds"] : 0 };
   else if (c["type"] === "semantic")
     condition = {
       type: "semantic",
@@ -195,7 +196,7 @@ function parseCondition(raw: unknown): RuleCondition {
       counterExamples: strings(c["counterExamples"], 20),
       threshold: typeof c["threshold"] === "number" ? c["threshold"] : 0.6,
     };
-  else throw new HttpError(400, "Condition type must be keyword, regex, domain or semantic");
+  else throw new HttpError(400, "Condition type must be keyword, regex, domain, duration or semantic");
   const problem = validateCondition(condition);
   if (problem) throw new HttpError(422, problem);
   return condition;

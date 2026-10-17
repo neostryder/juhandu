@@ -497,6 +497,14 @@ const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL
   );
   `,
+  `
+  CREATE TABLE video_durations (
+    video_id TEXT PRIMARY KEY,
+    seconds INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    checked_at TEXT NOT NULL
+  );
+  `,
 ];
 
 type Row = Record<string, unknown>;
@@ -1369,6 +1377,25 @@ export class Store {
       author: String(r["author"]),
       text: String(r["summary_text"]),
     }));
+  }
+
+  // ---- video lengths ----
+
+  /** The stored length in seconds of each video id that has one; a negative length means the video had none to give. */
+  getVideoDurations(ids: string[]): Map<string, number> {
+    const out = new Map<string, number>();
+    const get = this.db.prepare("SELECT seconds FROM video_durations WHERE video_id = ?");
+    for (const id of new Set(ids)) {
+      const row = get.get(id) as Row | undefined;
+      if (row) out.set(id, Number(row["seconds"]));
+    }
+    return out;
+  }
+
+  saveVideoDuration(videoId: string, seconds: number, source: string, now = new Date()): void {
+    this.db
+      .prepare("INSERT INTO video_durations (video_id, seconds, source, checked_at) VALUES (?, ?, ?, ?) ON CONFLICT(video_id) DO UPDATE SET seconds = excluded.seconds, source = excluded.source, checked_at = excluded.checked_at")
+      .run(videoId, Math.round(seconds), source, now.toISOString());
   }
 
   /** The newest items with their rule-relevant text, for previewing a draft rule. */
