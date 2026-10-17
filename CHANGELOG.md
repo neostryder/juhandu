@@ -29,6 +29,7 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 - [Visible] [Security] **Assistant write tools only change items the assistant can read.** The vote_item and mark_read MCP tools leave items from private feeds untouched unless private feeds are turned on for the assistant.
 - [Visible] [Security] **Rule proposal drafts go to the model at the private tier whenever they include a title from a private feed.** Every liked or disliked title in the request now sets the tier, where before only the items being clustered did.
 - [Visible] [Security] **Removing a stored secret clears it from every backend, including an older key file kept beside the current store.** The removal reports an error if any backend could not delete the secret. Removing a feed deletes its stored login first and keeps the feed if that step fails, so the owner can retry.
+- [Visible] [Security] **The JSON API now compares the port as well as the host name when it checks a request's Origin.** A request whose Origin names a different port than the Host it was sent to counts as cross-site, even when that host name is allowed. Setups behind a proxy on port 80 or 443 behave as before.
 
 ## [0.2.1] - 2026-10-10
 

@@ -1,11 +1,17 @@
 // The browser guard for the JSON API. The server has no sign-in, so a web page open in the owner's browser must not be able to use it:
 // the Host header has to be one of this machine's own names or a name listed in JUHANDU_PUBLIC_HOST (against DNS rebinding),
-// and any Origin has to be one of those names too (against a page on another site sending requests).
+// and any Origin has to be one of those names, on the same port, too (against a page on another site or another local port sending requests).
 const LOOPBACK = ["localhost", "127.0.0.1", "[::1]", "::1"];
 
 function hostOf(value: string): string {
   const match = value.trim().toLowerCase().match(/^(\[[0-9a-f:]+\]|[^:]+)(?::\d+)?$/);
   return match?.[1] ?? "";
+}
+
+/** The port a Host header names, with the default web ports counted as none so it compares with an Origin's port. */
+function portOf(value: string): string {
+  const port = value.trim().match(/:(\d+)$/)?.[1] ?? "";
+  return port === "80" || port === "443" ? "" : port;
 }
 
 export interface GuardHeaders {
@@ -25,12 +31,17 @@ export class RequestGuard {
     if (!this.allowed.has(hostOf(headers.host ?? ""))) return "This server does not answer requests addressed to that host name. Set JUHANDU_PUBLIC_HOST to the name you use.";
     if (headers.origin !== undefined) {
       let origin = "";
+      let originPort = "";
       try {
-        origin = new URL(headers.origin).hostname;
+        const parsed = new URL(headers.origin);
+        origin = parsed.hostname;
+        originPort = parsed.port;
       } catch {
         return "The request came from an origin that is not allowed";
       }
       if (!this.allowed.has(origin === "::1" ? "[::1]" : origin)) return "The request came from an origin that is not allowed";
+      // A page served on another port of an allowed name (another local dev server) is a different origin.
+      if (originPort !== portOf(headers.host ?? "")) return "The request came from an origin that is not allowed";
     }
     return null;
   }

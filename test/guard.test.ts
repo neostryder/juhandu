@@ -21,6 +21,9 @@ test("the guard refuses an origin that is not this machine or a listed public ho
   assert.notEqual(guard.refusal({ host: "127.0.0.1:8787", origin: "https://evil.example" }), null);
   assert.notEqual(guard.refusal({ host: "reader.example.com", origin: "https://evil.example" }), null);
   assert.notEqual(guard.refusal({ host: "127.0.0.1:8787", origin: "null" }), null);
+  assert.notEqual(guard.refusal({ host: "127.0.0.1:8787", origin: "http://localhost:3000" }), null, "another local port is another origin");
+  assert.notEqual(guard.refusal({ host: "127.0.0.1:8787", origin: "http://localhost" }), null, "the default port is not this port");
+  assert.equal(guard.refusal({ host: "reader.example.com:443", origin: "https://reader.example.com" }), null, "a default port named in Host matches an Origin without one");
   assert.notEqual(guard.refusal({ host: "other.example.com" }), null);
 });
 
