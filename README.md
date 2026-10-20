@@ -10,6 +10,31 @@ Juhandu has no accounts and no password today, and sign-in is planned for a late
 
 ## What it does
 
+```mermaid
+flowchart TD
+  Tick["tick"] --> Polling{"polling is already true?"}
+  Polling -->|"yes"| Return["Return"]
+  Polling -->|"no"| Lock["Set polling true"]
+  Lock --> Ingest["Ingestor.pollDue"]
+  Ingest --> Process["Processor.run<br/>Embed, resolve durations and evaluate rules"]
+  Process --> Summaries["ItemSummarizer.run background<br/>When chat capability exists"]
+  Summaries --> Stories["StoryBuilder.run background<br/>When provider, judge and embedder exist"]
+  Stories --> Asks["PipeEngine.runAsks background"]
+  Asks --> Proposals["Proposer.runIfVotesChanged background"]
+  Proposals --> Promote["promoteDue"]
+  Promote --> Due{"dailyBriefingDue?"}
+  Due -->|"yes"| Brief["Briefer.build<br/>kind daily"]
+  Due -->|"no"| Notify["Notifier.deliverDue"]
+  Brief --> Notify
+  Notify --> Unlock["finally sets polling false"]
+  Connect["Connect screen saves settings"] --> Rewire["rewire<br/>Rebuild providers and Watch clients"]
+  Rewire -->|"Schedule in 1 second"| Tick
+  Rewire -->|"Schedule in 2 seconds"| Videos["readVideos<br/>Separate reading guard"]
+  Videos --> Batch["VideoReader.run<br/>JUHANDU_VIDEO_BATCH defaults to 3"]
+```
+
+*Source of truth: `src/main.ts` and `src/pipeline/process.ts`. The tick resets its polling guard in a `finally`, so a failed stage cannot wedge it.*
+
 ### Feeds
 
 Paste a feed address or a site address on the Reading screen. Juhandu looks for the site's advertised feed and then tries the usual paths such as `/feed`, `/rss.xml` and `/atom.xml`. A YouTube channel, `@handle` or playlist address becomes that channel's or playlist's video feed. Feeds are polled every 30 minutes with conditional requests. A feed that keeps failing is retried less often, down to once a day, and never sooner than the site's `Retry-After` asks.
@@ -29,6 +54,44 @@ A rule can hide an item, favor or demote it, or always show it. Its conditions c
 Before a rule goes live you can preview it against the 200 most recent items. A rule can also be tried quietly, which counts what it would match and changes nothing. Word lists and domain blocklists can be imported as rules: the domain importer reads bare domains, hosts-file lines, `||example.com^` and `*.example.com` entries, up to 20,000 of them. Hidden items go to the Filtered out screen, which names the rule that hid each one and has a Restore button.
 
 ### Learning your taste
+
+```mermaid
+stateDiagram-v2
+  state "Votes and reasons" as Votes
+  state "Proposer draft" as Draft
+  state "Back-test" as Backtest
+  state "Pending suggestion on Rules" as Pending
+  state "Rejected suggestion" as Rejected
+  state "Learned rule in shadow" as Shadow
+  state "Active learned rule" as Active
+  [*] --> Votes
+  Votes --> Draft: Same-sign evidence with chat and embeddings available
+  Draft --> Backtest
+  Backtest --> Pending: Draft passes
+  Backtest --> Rejected: Draft fails
+  Pending --> Rejected: User rejects
+  Pending --> Shadow: User accepts
+  Shadow --> Shadow: Record matches without applying the rule
+  Shadow --> Active: promoteDue finds the meter met
+  note left of Votes
+    Taste orders the briefing and never hides alone
+  end note
+  note right of Shadow
+    Count only votes after acceptance
+    Narrow bar needs 30 votes and 95 percent agreement
+    Wilson lower bound must reach 0.85
+    Match rate at least 10 percent uses the broad bar
+    Broad bar needs 50 votes and 98 percent agreement
+    Wilson lower bound must reach 0.90
+  end note
+  note right of Active
+    A stable 5 percent audit bypasses this rule
+    block wins over pin
+    pin wins over soft weights
+  end note
+```
+
+*Source of truth: `src/proposals/proposer.ts`, `src/taste/meter.ts`, and `src/rules/rules.ts`. Automatic promotion also requires the Wilson lower-bound checks in `meter.ts`.*
 
 Every item gets an embedding from your embedding model. Like or dislike an item and, if you want, add a one-line reason. Juhandu uses your votes to order the briefing; taste alone never hides anything. Now and then the Reading screen asks about an item the model is unsure of, at most three a day by default, and the Rules screen changes the number or switches it off.
 
@@ -58,6 +121,32 @@ Juhandu has an MCP server so an AI assistant can read your briefing, items, feed
 
 ### Videos
 
+```mermaid
+flowchart TD
+  Loop["readVideos<br/>Own reading guard<br/>Batch defaults to 3"] --> Video{"Single YouTube video?"}
+  Video -->|"no"| None["Store none"]
+  Video -->|"yes"| Gemini{"Public video and Gemini ready?"}
+  Gemini -->|"yes"| Url["GeminiUrlRung<br/>Read the video address"]
+  Gemini -->|"no"| Captions["CaptionsRung<br/>yt-dlp captions and chat digest"]
+  Url -->|"Success"| Save["Save video reading"]
+  Url -->|"Failure or skip"| Captions
+  Captions -->|"Success"| Save
+  Captions -->|"Failure, skip or unavailable"| Local{"AppSideRung ready and<br/>an endpoint allowed?"}
+  Local -->|"no"| Outcome["Store none or failed<br/>According to whether a rung was tried"]
+  Local -->|"yes"| Duration{"Video exceeds 3600 seconds?"}
+  Duration -->|"yes"| Outcome
+  Duration -->|"no"| Extract["yt-dlp and ffmpeg<br/>Speech and/or frames"]
+  Extract --> Endpoints["Allowed speech and/or vision endpoint"]
+  Endpoints --> Digest["Merge timeline and digest transcript"]
+  Digest -->|"Success"| Save
+  Digest -->|"Failure"| Outcome
+  Save --> Summary["ItemSummarizer reads the stored text"]
+  Captions -.->|"NoEndpointError"| Queued["Leave work queued and stop this batch"]
+  Digest -.->|"NoEndpointError"| Queued
+```
+
+*Source of truth: `src/video/setup.ts`, `src/video/reader.ts`, and `src/video/gemini.ts`. Gemini reads public videos only.*
+
 For a single YouTube video, Juhandu reads the video before summarizing it, trying three ways in order. Gemini can read a public video from its address with your Google API key. The video's captions can be fetched with yt-dlp and digested by your chat model. Juhandu can also pull the audio and a few frames itself with yt-dlp and ffmpeg and send them to a speech server and a vision server you configure; this way skips videos over an hour long. The Connect screen sets up each way, tests it, and says why any of them is off.
 
 ### Watch
@@ -75,6 +164,31 @@ Every yes or no, pick-one and rank decision a model makes is logged in the datab
 The screens are Briefing, Reading, Filtered out, Rules, Feeds, Pipes, Watch, and Connect. On a narrow screen a tab bar runs along the bottom with the rest under More. The theme follows the system, and a button switches between system, light and dark. The app installs from the browser, and offline it shows the last items and briefings it loaded, marked as a saved copy.
 
 ## Requirements
+
+```mermaid
+flowchart TD
+  Browser["Browser or installed web app"] --> App["createApp<br/>One Node process<br/>web/ and HTTP API"]
+  Stdio["node src/mcp/stdio.ts<br/>JSON-RPC bridge"] -->|"HTTP /mcp"| App
+  App --> Store["Store<br/>juhandu.sqlite"]
+  App --> Credentials["Credentials and secret store<br/>Feed logins and endpoint keys"]
+  Credentials --> Sources["RSS, Atom, JSON, YouTube,<br/>iCalendar and discovered feeds"]
+  Sources -->|"Poll results"| Store
+  App --> Processing["Background tick<br/>Rules, summaries, stories and briefings"]
+  Processing --> Store
+  Processing --> Optional["Optional providers<br/>Chat, embeddings and judge"]
+  App --> Video["VideoReader"]
+  Video --> Tools["yt-dlp and ffmpeg"]
+  Video --> VideoServices["Gemini, speech and vision endpoints"]
+  App --> Notify["Notifier"]
+  Notify --> Delivery["SMTP, Telegram and Discord"]
+  App --> Watch["WatchService<br/>Read-only Trakt and TMDB clients"]
+  App --> Settings["AppSettings<br/>Connect saves trigger rewire"]
+  Settings --> Credentials
+  Settings --> Optional
+  Optional -->|"Chat capability absent"| Headlines["Briefings show headlines<br/>ItemSummarizer and StoryBuilder are absent"]
+```
+
+*Source of truth: `src/main.ts`, `src/api/server.ts`, and `src/mcp/stdio.ts`. Watch sends no data to a decision backend and writes nothing to Trakt.*
 
 Juhandu needs Node 26 or newer. Node runs the TypeScript source directly by stripping the types, so there is no build step, and Juhandu has no runtime npm dependencies ([DEPENDENCIES.md](DEPENDENCIES.md) lists what it does use).
 
@@ -105,6 +219,29 @@ docker compose up -d --build
 The Connect screen connects models while Juhandu runs: it saves each key in the secret store, tests the connection, and applies the change without a restart. Environment variables work too, and they win over anything saved on the screen. To turn on the AI features that way, point `JUHANDU_EMBED_URL` and `JUHANDU_CHAT_URL` at any OpenAI-style embedding and chat endpoints, such as a model server running on this machine. The start-up log says which model adapter Juhandu chose, or that AI features are off. [docs/SETUP.md](docs/SETUP.md) lists every setting, explains the judges and the optional integrations, and covers secrets and the command-line tools.
 
 ## Privacy
+
+```mermaid
+flowchart TD
+  Tier{"Source tier?"} -->|"public"| Public["Configured endpoints<br/>Gemini for public videos"]
+  Tier -->|"private"| Private["Private item"]
+  Private --> Gate{"EgressGate<br/>endpoint.local or endpoint name in<br/>JUHANDU_PRIVATE_ALLOW?"}
+  Local["Loopback defaults to local<br/>_LOCAL or Connect can override<br/>Cogitator and typed servers count as local"] --> Gate
+  Gate -->|"yes"| Send["Allowed endpoint"]
+  Gate -->|"no"| Queue["Work waits for an allowed endpoint"]
+  Private --> Reject["Gemini, Telegram and Discord<br/>Exclude private items"]
+  Private --> Email{"Email includePrivate?"}
+  Email -->|"true"| EmailSend["Email includes private items"]
+  Email -->|"false"| Withhold["Delivery omits private items"]
+  Private --> Pipes["Pipe reads private input<br/>Publication at /pipes/slug.xml is refused"]
+  Private --> MCP{"MCP includePrivate grant?"}
+  MCP -->|"true"| Expose["MCP includes private feeds"]
+  MCP -->|"false"| Hide["MCP hides private feeds"]
+  Private --> Export{"Practice export includePrivate?"}
+  Export -->|"true"| PrivateExport["Export includes private rows"]
+  Export -->|"false"| PublicExport["Export excludes private rows"]
+```
+
+*Source of truth: `src/models/egress.ts`, `src/notify/notifier.ts`, and `src/training/export.ts`. Embedding endpoints also need local eligibility when the provider is built.*
 
 Every feed is public or private. Public items may go to any model endpoint you configure. Private items go only to endpoints on this machine and to endpoints you name in `JUHANDU_PRIVATE_ALLOW`. An endpoint counts as on this machine when its address is a loopback address, unless its `_LOCAL` variable or its switch on the Connect screen says otherwise. Cogitator and typed-decision servers are always treated as local, so point them only at machines you control. Gemini only ever sees public videos, and Telegram and Discord never receive private items.
 
