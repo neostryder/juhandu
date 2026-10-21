@@ -151,6 +151,37 @@ test("a deferral never drops background work and is waited out for interactive w
   await assert.rejects(impatient.embed({ ...request, priority: "interactive" }), DeferredError);
 });
 
+test("a preempted request waits out Retry-After and retries unchanged, for background work too", async () => {
+  const preempted = (retryAfter?: string) =>
+    new Response(JSON.stringify({ error: { code: "preempted" } }), { status: 503, headers: { "x-cogitator-retry": "elsewhere", ...(retryAfter ? { "retry-after": retryAfter } : {}) } });
+  const request = { tier: "public" as const, texts: ["a"] };
+  for (const priority of ["background", "interactive"] as const) {
+    const calls: Call[] = [];
+    let now = 0;
+    const slept: number[] = [];
+    const provider = cogitator(fakeHost(calls, { script: [preempted(), preempted("7")] }), {
+      clock: () => now,
+      sleep: async (ms) => {
+        slept.push(ms);
+        now += ms;
+      },
+    });
+    const result = await provider.embed({ ...request, priority });
+    assert.equal(result.vectors.length, 1);
+    assert.deepEqual(slept, [20_000, 7_000], "the default wait is 20 seconds, then the header's");
+    const sent = calls.filter((c) => c.path.endsWith("/embeddings"));
+    assert.equal(sent.length, 3);
+    assert.equal(new Set(sent.map((c) => JSON.stringify(c.body))).size, 1, "the same request is sent each time");
+    assert.deepEqual(new Set(sent.map((c) => c.auth)), new Set([priority === "background" ? "Bearer low-secret" : "Bearer normal-secret"]), "a retry keeps its own key class");
+  }
+  // A host that keeps preempting leaves the work queued, as a deferral and not as a failure.
+  const calls: Call[] = [];
+  let now = 0;
+  const stubborn = cogitator(fakeHost(calls, { script: Array.from({ length: 20 }, () => preempted("30")) }), { clock: () => now, sleep: async (ms) => void (now += ms), preemptedWaitMs: 70_000 });
+  await assert.rejects(stubborn.embed({ ...request, priority: "background" }), (error: unknown) => error instanceof DeferredError && error instanceof NoEndpointError);
+  assert.equal(calls.filter((c) => c.path.endsWith("/embeddings")).length, 3, "two waits of 30 seconds fit in 70, the third does not");
+});
+
 test("a rejected key is a client error and an unreachable host queues the work", async () => {
   const calls: Call[] = [];
   const denied = cogitator(fakeHost(calls, { script: [new Response("no", { status: 401 })] }));

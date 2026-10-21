@@ -41,6 +41,8 @@ export interface CogitatorOptions {
   fetchImpl?: FetchLike;
   /** How long an interactive call keeps retrying a deferral before giving up. */
   interactiveWaitMs?: number;
+  /** How long any call keeps waiting out preemptions (a person's request took the model) before the work is left queued. */
+  preemptedWaitMs?: number;
   timeoutMs?: number;
   sleep?: (ms: number) => Promise<void>;
   clock?: () => number;
@@ -48,10 +50,13 @@ export interface CogitatorOptions {
 
 const DISCOVERY_TTL_MS = 60_000;
 const DEFAULT_RETRY_MS = 5_000;
+/** Cogitator's hint for a preempted request is its own Retry-After; without one a person's request usually finishes within this long. */
+const DEFAULT_PREEMPTED_RETRY_MS = 20_000;
+const DEFAULT_PREEMPTED_WAIT_MS = 120_000;
 
-function retryAfterMs(response: Response): number {
+function retryAfterMs(response: Response, fallback = DEFAULT_RETRY_MS): number {
   const seconds = Number(response.headers.get("retry-after"));
-  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : DEFAULT_RETRY_MS;
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : fallback;
 }
 
 async function errorCode(response: Response): Promise<string> {
@@ -152,9 +157,10 @@ export class CogitatorProvider implements ModelProvider {
     return (priority === "background" ? this.options.backgroundKey : this.options.interactiveKey).get();
   }
 
-  /** Sends one request. A deferral on an interactive call is retried until the wait runs out; on a background call it surfaces at once, because the work stays queued and the next cycle retries it. */
+  /** Sends one request. A deferral on an interactive call is retried until the wait runs out; on a background call it surfaces at once, because the work stays queued and the next cycle retries it. A preemption (503 "preempted": a person's request took the model) is not a failure of the model or the host: the same request is retried after Retry-After, whatever its priority, until the preemption wait runs out and the work is left queued. */
   private async send(doc: Discovery, path: string, body: Record<string, unknown>, priority: Priority): Promise<{ response: Response; model: string | null }> {
     const deadline = this.clock() + (priority === "interactive" ? (this.options.interactiveWaitMs ?? 30_000) : 0);
+    const preemptedDeadline = this.clock() + (this.options.preemptedWaitMs ?? DEFAULT_PREEMPTED_WAIT_MS);
     for (;;) {
       let response: Response;
       try {
@@ -168,8 +174,14 @@ export class CogitatorProvider implements ModelProvider {
         throw new NoEndpointError(`Cogitator is unreachable: ${error instanceof Error ? error.message : String(error)}`);
       }
       if (response.status === 503) {
-        const wait = retryAfterMs(response);
         const code = await errorCode(response);
+        if (code === "preempted" || response.headers.get("x-cogitator-retry") === "elsewhere") {
+          const wait = retryAfterMs(response, DEFAULT_PREEMPTED_RETRY_MS);
+          if (this.clock() + wait > preemptedDeadline) throw new DeferredError("Cogitator is serving a person's request", wait);
+          await this.sleep(wait);
+          continue;
+        }
+        const wait = retryAfterMs(response);
         const label = code === "deferred" ? "Cogitator deferred the request" : "Cogitator is busy";
         if (this.clock() + wait > deadline) throw new DeferredError(label, wait);
         await this.sleep(wait);
