@@ -9,7 +9,7 @@ import type { OpenAIEndpoint } from "../src/models/openai.ts";
 import { EndpointPool, NoEndpointError } from "../src/models/pool.ts";
 import { DeferredError, ModelMismatchError } from "../src/models/provider.ts";
 import type { ChatRequest, ModelProvider } from "../src/models/provider.ts";
-import { buildEmbedder, buildProvider } from "../src/models/setup.ts";
+import { buildEmbedder, buildProvider, defaultDiscoveryFile, discoveryCandidates } from "../src/models/setup.ts";
 import { JudgeError, LlmJudge, classMass } from "../src/judges/judge.ts";
 import { Processor } from "../src/pipeline/process.ts";
 import { Store } from "../src/store/store.ts";
@@ -332,4 +332,23 @@ test("a sentence drafted from private items is embedded at the private tier, and
   await embedder.queries("background", ["a rule"]);
   await embedder.queries("background", ["a rule drafted from private votes"], "private");
   assert.deepEqual(tiers, ["public", "private"]);
+});
+
+test("Cogitator's discovery file is looked for in its home, then on D:, then in the older per-user folder, and only Windows adds the last two", () => {
+  const win = { LOCALAPPDATA: "C:/Users/me/AppData/Local" };
+  const [onD, perUser] = discoveryCandidates(win);
+  assert.match(onD ?? "", /^D:.Cogitator.data.discovery\.json$/);
+  assert.match(perUser ?? "", /Cogitator.data.discovery\.json$/);
+  assert.deepEqual(discoveryCandidates({}), [], "no Windows marker and no home setting means nothing to look for");
+  const withHome = discoveryCandidates({ ...win, JUHANDU_COGITATOR_HOME: "E:/Models/Cogitator" });
+  assert.equal(withHome.length, 3);
+  assert.match(withHome[0] ?? "", /E:.Models.Cogitator.data.discovery\.json$/);
+  assert.equal(discoveryCandidates({ JUHANDU_COGITATOR_HOME: "/opt/cogitator" }).length, 1, "the home setting works off Windows too");
+
+  const present = new Set([perUser]);
+  assert.equal(defaultDiscoveryFile(win, (path) => present.has(path)), perUser, "an existing older file is still found");
+  present.add(onD);
+  assert.equal(defaultDiscoveryFile(win, (path) => present.has(path)), onD, "D: wins once its file exists");
+  assert.equal(defaultDiscoveryFile(win, () => false), onD, "with nothing present the preferred path is the one reported");
+  assert.equal(defaultDiscoveryFile({}, () => true), undefined);
 });

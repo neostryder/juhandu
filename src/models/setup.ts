@@ -31,9 +31,21 @@ export function endpointFrom(env: Env, prefix: string, name: string, defaultMode
   return { name, baseUrl, model: env[`${prefix}_MODEL`] ?? defaultModel, local: local ? local === "1" : isLoopback(baseUrl), ...(apiKey ? { apiKey } : {}), ...(extra ? { extraBody: JSON.parse(extra) as Record<string, unknown> } : {}) };
 }
 
-export function defaultDiscoveryFile(env: Env): string | undefined {
+/** Where Cogitator's discovery file may live, most likely first: the folder named by JUHANDU_COGITATOR_HOME, then D:\Cogitator, then the older %LOCALAPPDATA%\Cogitator. The last two apply only on Windows, which is detected by LOCALAPPDATA being set. */
+export function discoveryCandidates(env: Env): string[] {
+  const file = (root: string) => join(root, "data", "discovery.json");
+  const candidates: string[] = [];
+  const home = env["JUHANDU_COGITATOR_HOME"];
+  if (home) candidates.push(file(home));
   const base = env["LOCALAPPDATA"];
-  return base ? join(base, "Cogitator", "data", "discovery.json") : undefined;
+  if (base) candidates.push(file("D:\\Cogitator"), file(join(base, "Cogitator")));
+  return candidates;
+}
+
+/** The first candidate discovery file that exists, else the first candidate, else undefined when none applies here. */
+export function defaultDiscoveryFile(env: Env, exists: (path: string) => boolean = existsSync): string | undefined {
+  const candidates = discoveryCandidates(env);
+  return candidates.find(exists) ?? candidates[0];
 }
 
 /** True when Cogitator's discovery file is on this machine or its address is set. */

@@ -42,7 +42,7 @@ Embeddings are stored with a name, `JUHANDU_EMBED_TAG`, and embeddings with diff
 
 Cogitator is a local model host that Juhandu can use in place of separate endpoints. It is optional, it is not publicly available yet, and nothing in Juhandu needs it: any OpenAI-style embedding and chat endpoint does the same work.
 
-Juhandu finds Cogitator through a discovery file, a JSON document with `schema` set to `1`, an `openai_base` URL, a `health` URL, and a list of `roles`, each with a `name` and a `chain` of model names. Juhandu uses the roles named `embed-gemma2`, `summarize`, and `judge`, and falls back to `embed` for embeddings and to `describe` for summaries and judging. It reads the file from `JUHANDU_COGITATOR_DISCOVERY`, by default `%LOCALAPPDATA%\Cogitator\data\discovery.json` on Windows, or fetches it from `/v1/cogitator/discovery` under `JUHANDU_COGITATOR_URL`. Requests carry one of two bearer keys: the interactive key for work you are waiting on and the background key for the rest. They come from the secrets `cogitator/interactive` and `cogitator/background`, or from the files named by `JUHANDU_COGITATOR_KEY_FILE` and `JUHANDU_COGITATOR_BACKGROUND_KEY_FILE`.
+Juhandu finds Cogitator through a discovery file, a JSON document with `schema` set to `1`, an `openai_base` URL, a `health` URL, and a list of `roles`, each with a `name` and a `chain` of model names. Juhandu uses the roles named `embed-gemma2`, `summarize`, and `judge`, and falls back to `embed` for embeddings and to `describe` for summaries and judging. It reads the file from `JUHANDU_COGITATOR_DISCOVERY`, by default the first `data\discovery.json` that exists under `JUHANDU_COGITATOR_HOME`, `D:\Cogitator`, or `%LOCALAPPDATA%\Cogitator` (the last two on Windows only), or fetches it from `/v1/cogitator/discovery` under `JUHANDU_COGITATOR_URL`. Requests carry one of two bearer keys: the interactive key for work you are waiting on and the background key for the rest. They come from the secrets `cogitator/interactive` and `cogitator/background`, or from the files named by `JUHANDU_COGITATOR_KEY_FILE` and `JUHANDU_COGITATOR_BACKGROUND_KEY_FILE`.
 
 Cogitator is always treated as being on this machine, so it may receive private items.
 
@@ -224,7 +224,8 @@ Model adapter and embeddings:
 | `JUHANDU_EMBED_QUERY_PREFIX` | the model's own | Text put in front of each rule sentence and example before it is embedded. |
 | `JUHANDU_COGITATOR_EMBED_ROLE` | `embed-gemma2` | The Cogitator role that embeds text. |
 | `JUHANDU_COGITATOR_URL` | none | Cogitator's address, when its discovery file is not on this machine. |
-| `JUHANDU_COGITATOR_DISCOVERY` | `%LOCALAPPDATA%\Cogitator\data\discovery.json` on Windows, none elsewhere | Where to find Cogitator's discovery file. |
+| `JUHANDU_COGITATOR_DISCOVERY` | the first existing `data\discovery.json` under `JUHANDU_COGITATOR_HOME`, `D:\Cogitator`, or `%LOCALAPPDATA%\Cogitator`, the last two on Windows only | Where to find Cogitator's discovery file. |
+| `JUHANDU_COGITATOR_HOME` | none | The folder Cogitator is installed in, for a move that the built-in folders do not cover. Juhandu looks for `data\discovery.json` inside it first. |
 | `JUHANDU_COGITATOR_KEY_FILE` | none | A file holding Cogitator's interactive key, in place of the secret `cogitator/interactive`. |
 | `JUHANDU_COGITATOR_BACKGROUND_KEY_FILE` | none | A file holding Cogitator's background key, in place of the secret `cogitator/background`. |
 

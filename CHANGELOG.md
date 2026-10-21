@@ -28,6 +28,7 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 - [Visible] [Security] **The MCP list_rules tool now leaves out rules scoped to a private feed unless the MCP connection is allowed to see private feeds.** A rule like that names its feed and can quote the feed's text.
 - [Visible] [Security] **A rule sentence drafted from your votes is now embedded at the private tier when any voted item behind it is private.** That sentence goes only to a private (local) embedding endpoint. Before, it was always embedded at the public tier.
 - [Internal] [Security] **The XML parser no longer rescans its whole open-element stack for each closing tag that matches no open element.** A document with thousands of stray closing tags now parses in linear time.
+- [Visible] [Compatibility] **Juhandu now finds Cogitator's discovery file in `D:\Cogitator` before the older `%LOCALAPPDATA%\Cogitator` folder.** `JUHANDU_COGITATOR_HOME` names any other install folder and is checked first, so a later move needs a setting instead of an update.
 - [Visible] [Security] **The embedding endpoint must be on this machine, because embeddings carry item text and rule sentences.** It counts as local at a loopback address or with `JUHANDU_EMBED_LOCAL=1`, and at any other address embeddings stay off and the start-up log says so.
 
 ## [0.3.0] - 2026-10-16
