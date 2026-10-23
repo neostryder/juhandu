@@ -13,9 +13,6 @@ import type { ModelProvider } from "./provider.ts";
 
 type Env = Record<string, string | undefined>;
 
-/** The Cogitator role that embeds text. When the gateway has no role by this name, the adapter falls back to its older "embed" role. */
-const DEFAULT_EMBED_ROLE = "embed-gemma2";
-
 /** The default for an endpoint's _LOCAL setting: an address that names this machine counts as local. */
 export function isLoopback(url: string): boolean {
   const host = new URL(url).hostname;
@@ -80,10 +77,10 @@ export function buildProvider(env: Env, dataDir: string, secrets?: SecretStore):
       ...(gatewayUrl ? { gatewayUrl } : {}),
       interactiveKey: keyFor(interactiveFile, "cogitator/interactive", "interactive.key"),
       backgroundKey: keyFor(backgroundFile, "cogitator/background", "background.key"),
-      roles: { embed: env["JUHANDU_COGITATOR_EMBED_ROLE"] ?? DEFAULT_EMBED_ROLE },
+      roles: env["JUHANDU_COGITATOR_EMBED_ROLE"] ? { embed: env["JUHANDU_COGITATOR_EMBED_ROLE"] } : {},
     });
   }
-  const embedded = endpointFrom(env, "JUHANDU_EMBED", "embeddings", "nomic-embed-text-v1.5");
+  const embedded = endpointFrom(env, "JUHANDU_EMBED", "embeddings", "embeddinggemma-2");
   // Embeddings carry item text and the owner's rule sentences, so they stay on this machine: an embedding endpoint that is not local is not used.
   const embed = embedded?.local ? embedded : null;
   if (embedded && !embed) console.warn(`Juhandu: the embedding endpoint ${embedded.baseUrl} is not local, so embeddings are off. Embeddings never leave this machine.`);
@@ -93,7 +90,7 @@ export function buildProvider(env: Env, dataDir: string, secrets?: SecretStore):
   return new OpenAICompatibleProvider({
     ...(embed ? { embedPool: new EndpointPool([embed], gate) } : {}),
     ...(chat ? { chatPool: new EndpointPool([chat], gate) } : {}),
-    embedTag: env["JUHANDU_EMBED_TAG"] ?? "nomic-embed-text-v1.5-q8_0",
+    embedTag: env["JUHANDU_EMBED_TAG"] ?? "embeddinggemma-2",
   });
 }
 

@@ -20,7 +20,7 @@ Any server that answers the OpenAI `/embeddings` and `/chat/completions` routes 
 
 ```
 JUHANDU_EMBED_URL=http://127.0.0.1:8080/v1
-JUHANDU_EMBED_MODEL=nomic-embed-text-v1.5
+JUHANDU_EMBED_MODEL=embeddinggemma-2
 JUHANDU_CHAT_URL=http://127.0.0.1:8080/v1
 JUHANDU_CHAT_MODEL=your-chat-model
 ```
@@ -31,7 +31,7 @@ Each endpoint takes the same set of variables after its prefix: `_URL` turns it 
 
 | Prefix | Used for | Default model |
 | --- | --- | --- |
-| `JUHANDU_EMBED` | Embeddings | `nomic-embed-text-v1.5` |
+| `JUHANDU_EMBED` | Embeddings | `embeddinggemma-2` |
 | `JUHANDU_CHAT` | Summaries, proposals, the judge, caption digests | `default` |
 | `JUHANDU_TRANSCRIBE` | Speech to text for videos (`/audio/transcriptions`) | `whisper-1` |
 | `JUHANDU_VISION` | Describing video frames (`/chat/completions` with images) | `default` |
@@ -42,7 +42,7 @@ Embeddings are stored with a name, `JUHANDU_EMBED_TAG`, and embeddings with diff
 
 Cogitator is a local model host that Juhandu can use in place of separate endpoints. It is optional, it is not publicly available yet, and nothing in Juhandu needs it: any OpenAI-style embedding and chat endpoint does the same work.
 
-Juhandu finds Cogitator through a discovery file, a JSON document with `schema` set to `1`, an `openai_base` URL, a `health` URL, and a list of `roles`, each with a `name` and a `chain` of model names. Juhandu uses the roles named `embed-gemma2`, `summarize`, and `judge`, and falls back to `embed` for embeddings and to `describe` for summaries and judging. It reads the file from `JUHANDU_COGITATOR_DISCOVERY`, by default the first `data\discovery.json` that exists under `JUHANDU_COGITATOR_HOME`, `D:\Cogitator`, or `%LOCALAPPDATA%\Cogitator` (the last two on Windows only), or fetches it from `/v1/cogitator/discovery` under `JUHANDU_COGITATOR_URL`. Requests carry one of two bearer keys: the interactive key for work you are waiting on and the background key for the rest. They come from the secrets `cogitator/interactive` and `cogitator/background`, or from the files named by `JUHANDU_COGITATOR_KEY_FILE` and `JUHANDU_COGITATOR_BACKGROUND_KEY_FILE`. When Cogitator answers a request with 503 and the code `preempted`, because a person's request took the model, Juhandu waits for the `Retry-After` time (20 seconds when there is none) and sends the same request again. It keeps trying for two minutes, then leaves the work queued for the next cycle. It never treats the wait as a model failure.
+Juhandu finds Cogitator through a discovery file, a JSON document with `schema` set to `1`, an `openai_base` URL, a `health` URL, and a list of `roles`, each with a `name` and a `chain` of model names. Juhandu uses the roles named `embed-gemma2`, `summarize`, and `judge`, and falls back to `describe` for summaries and judging. It reads the file from `JUHANDU_COGITATOR_DISCOVERY`, by default the first `data\discovery.json` that exists under `JUHANDU_COGITATOR_HOME`, `D:\Cogitator`, or `%LOCALAPPDATA%\Cogitator` (the last two on Windows only), or fetches it from `/v1/cogitator/discovery` under `JUHANDU_COGITATOR_URL`. Requests carry one of two bearer keys: the interactive key for work you are waiting on and the background key for the rest. They come from the secrets `cogitator/interactive` and `cogitator/background`, or from the files named by `JUHANDU_COGITATOR_KEY_FILE` and `JUHANDU_COGITATOR_BACKGROUND_KEY_FILE`. When Cogitator answers a request with 503 and the code `preempted`, because a person's request took the model, Juhandu waits for the `Retry-After` time (20 seconds when there is none) and sends the same request again. It keeps trying for two minutes, then leaves the work queued for the next cycle. It never treats the wait as a model failure.
 
 Cogitator is always treated as being on this machine, so it may receive private items.
 
@@ -218,7 +218,7 @@ Model adapter and embeddings:
 | `JUHANDU_LOCAL_AI` | `auto` | `cogitator`, `openai` or `off`. |
 | `JUHANDU_EMBED_URL`, `_KEY`, `_MODEL`, `_LOCAL` | none | The embedding endpoint, as described above. |
 | `JUHANDU_CHAT_URL`, `_KEY`, `_MODEL`, `_LOCAL`, `_EXTRA_BODY` | none | The chat endpoint. |
-| `JUHANDU_EMBED_TAG` | `nomic-embed-text-v1.5-q8_0` | The name stored with each embedding. |
+| `JUHANDU_EMBED_TAG` | `embeddinggemma-2` | The name stored with each embedding. |
 | `JUHANDU_EMBED_DIMS` | the model's own | Keeps only this many dimensions of each embedding. |
 | `JUHANDU_EMBED_DOC_PREFIX` | the model's own | Text put in front of each item before it is embedded. |
 | `JUHANDU_EMBED_QUERY_PREFIX` | the model's own | Text put in front of each rule sentence and example before it is embedded. |

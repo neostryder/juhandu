@@ -22,9 +22,9 @@ const DISCOVERY: Discovery = {
   health: "http://cog.test/health",
   roles: [
     { name: "describe", chain: ["gemma-4-12b"] },
-    { name: "embed", chain: ["nomic-embed-text-v1.5"] },
+    { name: "embed-gemma2", chain: ["embeddinggemma-2", "embeddinggemma-2@bilbo"] },
   ],
-  models: [{ id: "gemma-4-12b" }, { id: "nomic-embed-text-v1.5" }],
+  models: [{ id: "gemma-4-12b" }, { id: "embeddinggemma-2" }],
 };
 
 interface Call {
@@ -53,7 +53,7 @@ function fakeHost(calls: Call[], options: FakeOptions = {}, cogitator = true): F
     calls.push({ path, auth: headers["authorization"] ?? "", body });
     const next = script.shift();
     if (next && next !== "ok") return next;
-    const extra: Record<string, string> = cogitator ? { "x-cogitator-model": path.endsWith("embeddings") ? (options.embedModelHeader ?? "nomic-embed-text-v1.5") : "gemma-4-12b" } : {};
+    const extra: Record<string, string> = cogitator ? { "x-cogitator-model": path.endsWith("embeddings") ? (options.embedModelHeader ?? "embeddinggemma-2") : "gemma-4-12b" } : {};
     if (path.endsWith("/embeddings")) {
       const input = body["input"] as string[];
       return new Response(JSON.stringify({ data: input.map((t, index) => ({ index, embedding: [t.length, 1, 0] })) }), { status: 200, headers: extra });
@@ -99,15 +99,15 @@ test("a gateway that advertises its loopback address is called at the address th
 test("the Cogitator adapter asks for a role by job name and picks the key class by priority", async () => {
   const calls: Call[] = [];
   const provider = cogitator(fakeHost(calls));
-  assert.equal(await provider.embeddingModel(), "nomic-embed-text-v1.5");
+  assert.equal(await provider.embeddingModel(), "embeddinggemma-2");
   const background = await provider.embed({ tier: "public", priority: "background", texts: ["a", "bb"] });
   const interactive = await provider.embed({ tier: "public", priority: "interactive", texts: ["c"] });
   assert.equal(background.vectors.length, 2);
-  assert.equal(background.model, "nomic-embed-text-v1.5");
+  assert.equal(background.model, "embeddinggemma-2");
   assert.equal(interactive.vectors.length, 1);
   assert.equal(calls[0]!.auth, "Bearer low-secret");
   assert.equal(calls[1]!.auth, "Bearer normal-secret");
-  assert.equal(calls[0]!.body["model"], "embed");
+  assert.equal(calls[0]!.body["model"], "embed-gemma2");
 });
 
 test("summarize and judge fall back to describe, and use their own role when Cogitator has one", async () => {
@@ -123,10 +123,10 @@ test("summarize and judge fall back to describe, and use their own role when Cog
   await custom.chat({ ...request, job: "judge" });
   await custom.chat({ ...request, job: "summarize" });
   assert.deepEqual(calls.map((c) => c.body["model"]), ["judge", "describe"]);
-  const renamed = cogitator(fakeHost(calls), { roles: { summarize: "embed" } });
+  const renamed = cogitator(fakeHost(calls), { roles: { summarize: "embed-gemma2" } });
   calls.length = 0;
   await renamed.chat({ ...request, job: "summarize" });
-  assert.equal(calls[0]!.body["model"], "embed");
+  assert.equal(calls[0]!.body["model"], "embed-gemma2");
 });
 
 test("a deferral never drops background work and is waited out for interactive work", async () => {
@@ -210,39 +210,39 @@ test("vectors from a different embedding model than the tag are refused and queu
   await assert.rejects(provider.embed({ tier: "public", priority: "background", texts: ["a"] }), ModelMismatchError);
   const healthy = new Processor(store, new Embedder({ provider: cogitator(fakeHost(calls)) }));
   assert.equal((await healthy.run()).embedded, 1);
-  assert.equal(store.getEmbedding(1, "nomic-embed-text-v1.5")?.length, 3);
+  assert.equal(store.getEmbedding(1, "embeddinggemma-2")?.length, 3);
   store.close();
 });
 
 test("the embedder tags truncated vectors with their dimensions", async () => {
   const embedder = new Embedder({ provider: cogitator(fakeHost([])), dims: 2 });
-  assert.equal(await embedder.tag(), "nomic-embed-text-v1.5@2");
+  assert.equal(await embedder.tag(), "embeddinggemma-2@2");
   const out = await embedder.documents("public", "background", ["abc"]);
-  assert.equal(out.tag, "nomic-embed-text-v1.5@2");
+  assert.equal(out.tag, "embeddinggemma-2@2");
   assert.equal(out.vectors[0]!.length, 2);
 });
 
-const WITH_GEMMA: Discovery = { ...DISCOVERY, roles: [...DISCOVERY.roles, { name: "embed-gemma2", chain: ["embeddinggemma-2", "embeddinggemma-2@bilbo"] }] };
+const RETIRED_EMBED_ONLY: Discovery = { ...DISCOVERY, roles: [{ name: "describe", chain: ["gemma-4-12b"] }, { name: "embed", chain: ["nomic-embed-text-v1.5"] }] };
 
-test("the embedding role is the one asked for, falls back to the older embed role, and a failover peer's name is not a different model", async () => {
+test("the embedding role is the one asked for, a retired embed role is not used, and a failover peer's name is not a different model", async () => {
   const calls: Call[] = [];
-  const wanted = cogitator(fakeHost(calls, { discovery: WITH_GEMMA, embedModelHeader: "embeddinggemma-2@bilbo" }), { roles: { embed: "embed-gemma2" } });
+  const wanted = cogitator(fakeHost(calls, { embedModelHeader: "embeddinggemma-2@bilbo" }), { roles: { embed: "embed-gemma2" } });
   assert.equal(await wanted.embeddingModel(), "embeddinggemma-2");
   const served = await wanted.embed({ tier: "public", priority: "background", texts: ["a"] });
   assert.equal(served.model, "embeddinggemma-2", "the peer that answered is dropped from the model name");
   assert.equal(calls[0]!.body["model"], "embed-gemma2");
-  const older = cogitator(fakeHost(calls), { roles: { embed: "embed-gemma2" } });
-  assert.equal(await older.embeddingModel(), "nomic-embed-text-v1.5", "a gateway without the new role keeps serving the old one");
+  const retired = cogitator(fakeHost(calls, { discovery: RETIRED_EMBED_ONLY }));
+  assert.equal(await retired.embeddingModel(), null, "a gateway that only has the retired embed role has no embedding model");
   calls.length = 0;
-  await older.embed({ tier: "public", priority: "background", texts: ["a"] });
-  assert.equal(calls[0]!.body["model"], "embed");
+  await assert.rejects(retired.embed({ tier: "public", priority: "background", texts: ["a"] }), NoEndpointError);
+  assert.equal(calls.length, 0, "nothing is sent to the retired role");
 });
 
 test("each embedding model gets the prefixes it was trained with, and an environment prefix overrides them", async () => {
   assert.deepEqual(promptsFor("embeddinggemma-2"), { document: "title: none | text: ", query: "task: search result | query: " });
   assert.deepEqual(promptsFor("nomic-embed-text-v1.5"), { document: "clustering: ", query: "clustering: " });
   const calls: Call[] = [];
-  const gemma = new Embedder({ provider: cogitator(fakeHost(calls, { discovery: WITH_GEMMA, embedModelHeader: "embeddinggemma-2" }), { roles: { embed: "embed-gemma2" } }) });
+  const gemma = new Embedder({ provider: cogitator(fakeHost(calls, { embedModelHeader: "embeddinggemma-2" }), { roles: { embed: "embed-gemma2" } }) });
   await gemma.documents("public", "background", ["story"]);
   await gemma.queries("background", ["a rule"]);
   assert.deepEqual(calls.map((c) => c.body["input"]), [["title: none | text: story"], ["task: search result | query: a rule"]]);

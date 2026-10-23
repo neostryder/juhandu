@@ -8,6 +8,8 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 
 - [Visible] [Compatibility] **Juhandu now finds Cogitator's discovery file in `D:\Cogitator` before the older `%LOCALAPPDATA%\Cogitator` folder.** `JUHANDU_COGITATOR_HOME` names any other install folder and is checked first, so a later move needs a setting instead of an update.
 - [Visible] [Compatibility] **Juhandu now waits out a Cogitator request that a person's own request pushed aside.** When Cogitator answers 503 with the code `preempted`, Juhandu waits the `Retry-After` time (20 seconds when there is none) and sends the same request again, for background work as well as interactive work. It does not count the wait as a failure, and after two minutes of it the work stays queued for the next cycle.
+- [Visible] [Compatibility] **Juhandu no longer falls back to Cogitator's retired `embed` role.** Embeddings come from the `embed-gemma2` role only, so a gateway that has just the old role leaves embedding work queued instead of getting vectors from a model that is gone.
+- [Visible] [Compatibility] **A plain embedding endpoint now defaults to the model name and tag `embeddinggemma-2`, where it used to default to Nomic.** An endpoint that still serves Nomic needs `JUHANDU_EMBED_MODEL` and `JUHANDU_EMBED_TAG` set to the old names, or its items are embedded again under the new tag.
 
 ## [0.4.0] - 2026-10-17
 

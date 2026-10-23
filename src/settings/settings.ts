@@ -35,7 +35,7 @@ interface EndpointSpec {
 
 export const ENDPOINTS: readonly EndpointSpec[] = [
   { id: "chat", prefix: "JUHANDU_CHAT", name: "chat", stored: "chat/key", defaultModel: "default" },
-  { id: "embed", prefix: "JUHANDU_EMBED", name: "embeddings", stored: "embed/key", defaultModel: "nomic-embed-text-v1.5" },
+  { id: "embed", prefix: "JUHANDU_EMBED", name: "embeddings", stored: "embed/key", defaultModel: "embeddinggemma-2" },
   { id: "transcribe", prefix: "JUHANDU_TRANSCRIBE", name: "transcription", stored: "transcribe/key", defaultModel: "whisper-1" },
   { id: "vision", prefix: "JUHANDU_VISION", name: "vision", stored: "vision/key", defaultModel: "default" },
 ];

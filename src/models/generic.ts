@@ -10,7 +10,7 @@ export interface GenericOptions {
   embedPool?: EndpointPool<OpenAIEndpoint>;
   /** Ordered endpoints for chat and judging. */
   chatPool?: EndpointPool<OpenAIEndpoint>;
-  /** The tag stored beside vectors, for example nomic-embed-text-v1.5-q8_0. */
+  /** The tag stored beside vectors, for example embeddinggemma-2. */
   embedTag?: string;
   fetchImpl?: FetchLike;
 }

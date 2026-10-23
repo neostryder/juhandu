@@ -48,6 +48,8 @@ export interface CogitatorOptions {
   clock?: () => number;
 }
 
+/** The role that embeds text. */
+const DEFAULT_EMBED_ROLE = "embed-gemma2";
 const DISCOVERY_TTL_MS = 60_000;
 const DEFAULT_RETRY_MS = 5_000;
 /** Cogitator's hint for a preempted request is its own Retry-After; without one a person's request usually finishes within this long. */
@@ -134,9 +136,8 @@ export class CogitatorProvider implements ModelProvider {
   /** The role that serves a job: the configured name, else the same name, else the fallback (summarize and judge use "describe"). */
   private roleFor(doc: Discovery, job: Job): string {
     const names = new Set(doc.roles.map((r) => r.name));
-    const wanted = this.options.roles?.[job] ?? job;
+    const wanted = this.options.roles?.[job] ?? (job === "embed" ? DEFAULT_EMBED_ROLE : job);
     if (names.has(wanted)) return wanted;
-    if (job === "embed" && names.has("embed")) return "embed";
     if ((job === "summarize" || job === "judge") && names.has("describe")) return "describe";
     throw new NoEndpointError(`Cogitator has no role for ${job}`);
   }
