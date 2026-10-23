@@ -4,6 +4,8 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-22
+
 ### Changed
 
 - [Visible] [Compatibility] **Juhandu now finds Cogitator's discovery file in `D:\Cogitator` before the older `%LOCALAPPDATA%\Cogitator` folder.** `JUHANDU_COGITATOR_HOME` names any other install folder and is checked first, so a later move needs a setting instead of an update.
