@@ -4,6 +4,10 @@ All notable changes to Juhandu are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Added
+
+- [Visible] [UI] **Newsletters can arrive beside feeds through the mail door.** A mail filter or other program posts each message as JSON to `POST /inbound/mail` with a `jhm_` bearer token that you make, replace, or remove under Newsletter mail on the Connect screen, which also shows the last message time and today's count. Each newsletter becomes one source in the Newsletters folder at the private tier, and each issue becomes one item. A message already held answers 200 `{"inserted":false}`, so senders can retry safely. Bodies are capped at 2 MB and senders at 120 messages a minute.
+
 ## [0.5.0] - 2026-10-22
 
 ### Changed

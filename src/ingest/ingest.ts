@@ -69,6 +69,7 @@ export class Ingestor {
 
   async pollSource(source: Source): Promise<PollResult> {
     const now = this.clock();
+    if (source.kind === "mail") return { sourceId: source.id, status: "not-modified", inserted: 0, error: null };
     try {
       if (source.auth && !this.credentials) throw new Error("This feed needs a login, but no secret store is set up");
       const access = this.credentials ? await this.credentials.access(source) : { url: source.url, headers: {} };

@@ -7,7 +7,7 @@ import type { PipeDoc } from "../pipes/pipe.ts";
 import { fromBlob, toBlob } from "../taste/vectors.ts";
 
 export type DataTier = "public" | "private";
-export type SourceKind = "feed" | "youtube";
+export type SourceKind = "feed" | "youtube" | "mail";
 
 export interface Source {
   id: number;
@@ -771,8 +771,14 @@ export class Store {
     return (this.db.prepare("SELECT * FROM sources ORDER BY folder, title COLLATE NOCASE, id").all() as Row[]).map(toSource);
   }
 
+  /** Sources to fetch now. A mail source is pushed to, never fetched, so it is never due. */
   dueSources(now: Date): Source[] {
-    return (this.db.prepare("SELECT * FROM sources WHERE next_fetch_at <= ? ORDER BY next_fetch_at, id").all(now.toISOString()) as Row[]).map(toSource);
+    return (this.db.prepare("SELECT * FROM sources WHERE next_fetch_at <= ? AND kind != 'mail' ORDER BY next_fetch_at, id").all(now.toISOString()) as Row[]).map(toSource);
+  }
+
+  itemIdByGuid(sourceId: number, guid: string): number | undefined {
+    const row = this.db.prepare("SELECT id FROM items WHERE source_id = ? AND guid = ?").get(sourceId, guid) as { id: number } | undefined;
+    return row?.id;
   }
 
   removeSource(id: number): boolean {

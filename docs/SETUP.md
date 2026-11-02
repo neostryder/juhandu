@@ -60,6 +60,50 @@ Each question is asked twice in one request, the second time phrased the other w
 
 Every feed is public or private. Public items may go to any endpoint. Private items go only to endpoints on this machine and to endpoints named in `JUHANDU_PRIVATE_ALLOW`, a comma-separated list of `embeddings`, `chat`, `transcription`, `vision` and `jev`. When no allowed endpoint is available, the work on a private item waits in the queue.
 
+### Newsletter mail
+
+The mail door lets newsletters arrive in Juhandu beside your feeds. Another program that has already accepted the newsletter, such as a mail filter, pushes each message to Juhandu as JSON. Juhandu holds no mailbox login and never reads a mailbox.
+
+To turn it on, open the Connect screen and choose **Make a mail token** under Newsletter mail. The token starts with `jhm_` and is shown once, so copy it into the sender's settings right away. Juhandu keeps it in the secret store as `mail.token`. The token can only add items and cannot read, vote, or change anything. Connect also shows the address to send to, the time of the last message received, and how many arrived today.
+
+The sender posts each message to `/inbound/mail` on the same port as the rest of the server. Requests pass the same Host and Origin guard as the API, and the body can be at most 2 MB.
+
+```sh
+curl -X POST https://juhandu.example.com/inbound/mail \
+  -H "Authorization: Bearer jhm_YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"messageId":"<issue-12@example.net>","from":{"name":"Weekly Notes","address":"news@example.net"},"subject":"Issue 12","text":"Hello readers"}'
+```
+
+| Field | Required | Use |
+| --- | --- | --- |
+| `messageId` | yes | String that identifies the message |
+| `from.address` | yes | Sender address |
+| `from.name` | no | Sender display name, used as the item's author |
+| `subject` | no | Item title |
+| `date` | no | ISO 8601; the receipt time is used when it is missing or more than a day in the future |
+| `listId` | no | The List-Id header |
+| `listUnsubscribe` | no | Array of https and mailto unsubscribe targets |
+| `text`, `html` | at least one | Message body |
+| `category`, `verdict` | no | Stored with the item |
+
+| Answer | When |
+| --- | --- |
+| 201 `{"inserted":true,"itemId":N}` | New item stored |
+| 200 `{"inserted":false}` | Message already held, so a sender can retry safely |
+| 400 | Bad body; the answer gives the reason |
+| 401 | Missing or wrong token |
+| 404 | The door is off |
+| 413 | Body over 2 MB |
+| 415 | Body is not JSON |
+| 429 | More than 120 messages in a minute |
+
+Each newsletter becomes one source in the Newsletters folder. Juhandu keys the source by `listId` when present and otherwise by the lowercased From address, and creates it on the first message with the sender's display name (or address) as its title. The source is never fetched, so Refresh on it does nothing. Each issue becomes one item. Its summary text is the start of the text part, or of the HTML turned into text when there is no text part. The HTML is stored but never shown as markup. The item's link is the "view in browser" link found in the HTML (an http or https link whose words say view in browser, read online, or web version), and is empty when there is none.
+
+New newsletter sources start at the private tier. Their embeddings and summaries stay on local models, and a story that includes a newsletter is left out of Telegram and Discord digests. You can change a source's tier on the Feeds screen like any other.
+
+To turn the door off, choose **Remove the mail token** on Connect, and `/inbound/mail` answers 404 again. **Make a new token** replaces the old token, which stops working at once.
+
 ## Video length rules
 
 A Video length condition needs each YouTube video's length, which Juhandu looks up once per video and stores. With a key in `JUHANDU_YOUTUBE_API_KEY` or the secret `youtube/key`, lengths come from the YouTube Data API v3 (`videos.list` with `contentDetails`), up to 50 videos per request and 200 per check, and the key goes in a request header so it never appears in the address. Without a key, Juhandu reads each video's watch page instead, up to 10 pages per check. When YouTube rejects the key with a 400, 401, or 403, Juhandu switches to watch pages and does not try the API again for an hour, though a newly saved key is tried at once.

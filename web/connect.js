@@ -119,6 +119,8 @@ function varNote(f) {
 class VzConnect extends HTMLElement {
   /** @type {any[]} */ channels = [];
   /** @type {any} */ mcp = null;
+  /** @type {any} */ mail = null;
+  /** @type {string} */ freshMailToken = "";
   /** @type {any} */ settings = null;
   /** @type {any} */ video = null;
   /** @type {string} */ freshToken = "";
@@ -150,6 +152,10 @@ class VzConnect extends HTMLElement {
         <p class="help">Assistants such as Claude can read your briefing and your feeds through MCP. You choose below whether they may change things and see private feeds.</p>
         <div id="mcp"></div>
         <div class="flourish"><i></i></div>
+        <h3 id="mail-head">Newsletter mail</h3>
+        <p class="help">A mail filter or other program that has already accepted a newsletter can send it to this server, and each newsletter then appears in the Newsletters folder beside your feeds. Juhandu holds no mailbox login and never reads a mailbox, so newsletters arrive only after you set up a sender to push them here.</p>
+        <div id="mail"></div>
+        <div class="flourish"><i></i></div>
         <h3 id="training-head">Teach your own judge</h3>
         <p class="help">Juhandu keeps every yes or no it decides, and your votes, as practice questions for a small local model. Nothing leaves this computer when you download them. Private feeds are left out.</p>
         <div id="training"></div>
@@ -170,9 +176,10 @@ class VzConnect extends HTMLElement {
   /** @param {string} [section] Scrolls to models, video, delivery, assistants or training once the screen is drawn. */
   async load(section = "") {
     try {
-      const [notify, mcp, training, video, settings, setup] = await Promise.all([
+      const [notify, mcp, mail, training, video, settings, setup] = await Promise.all([
         api("/api/notify"),
         api("/api/mcp"),
+        api("/api/mail").catch(() => null),
         api("/api/training").catch(() => null),
         api("/api/video").catch(() => null),
         api("/api/settings").catch(() => null),
@@ -181,12 +188,14 @@ class VzConnect extends HTMLElement {
       this.renderSetupAgain(setup);
       this.channels = notify.channels;
       this.mcp = mcp;
+      this.mail = mail;
       this.settings = settings;
       this.video = video;
       this.renderModels();
       this.renderVideo();
       this.renderChannels();
       this.renderMcp();
+      this.renderMail();
       this.renderTraining(training);
       if (section) this.$(`${section}-head`)?.scrollIntoView({ block: "start" });
     } catch (error) {
@@ -879,6 +888,49 @@ class VzConnect extends HTMLElement {
       el("p", { class: "help", text: "For one that starts a program on this computer, give it this command:" }),
       el("code", { class: "cmd", text: "node src/mcp/stdio.ts" }),
       el("p", { class: "help", text: tokenText }),
+      tokenBox,
+      el("div", { class: "actions" }, make, drop),
+    );
+  }
+
+  // ---- newsletter mail ----
+
+  renderMail() {
+    const mail = this.mail;
+    const host = this.$("mail");
+    if (!mail?.available) {
+      host.replaceChildren(el("p", { class: "muted", text: "Newsletter mail is not set up on this server." }));
+      return;
+    }
+    const url = `${location.origin}/inbound/mail`;
+    const tokenBox = el("div", { class: "token", hidden: !this.freshMailToken });
+    if (this.freshMailToken) tokenBox.replaceChildren(el("p", { text: "Copy this token now. It is not shown again, and it can only add newsletters." }), el("code", { text: this.freshMailToken }));
+    const make = el("button", { type: "button", text: mail.tokenSet ? "Make a new token" : "Make a mail token" });
+    make.addEventListener("click", async () => {
+      try {
+        const out = await api("/api/mail", { method: "PUT", json: { token: "new" } });
+        this.freshMailToken = out.token;
+        this.mail = out;
+        this.renderMail();
+      } catch (error) {
+        this.say(messageOf(error));
+      }
+    });
+    const drop = el("button", { type: "button", class: "quiet danger", text: "Remove the mail token", hidden: !mail.tokenSet });
+    drop.addEventListener("click", async () => {
+      try {
+        this.freshMailToken = "";
+        this.mail = await api("/api/mail", { method: "PUT", json: { token: null } });
+        this.renderMail();
+      } catch (error) {
+        this.say(messageOf(error));
+      }
+    });
+    const last = mail.lastReceivedAt ? `Last message received ${new Date(mail.lastReceivedAt).toLocaleString()}; ${mail.receivedToday} today` : "On. No newsletters have arrived yet.";
+    host.replaceChildren(
+      el("p", { class: "last", role: "status", text: mail.tokenSet ? last : "Off. Make a mail token to start receiving newsletters." }),
+      el("p", { class: "help", text: "For a mail filter or other program that sends newsletters, give it this address:" }),
+      el("code", { class: "cmd", text: url }),
       tokenBox,
       el("div", { class: "actions" }, make, drop),
     );

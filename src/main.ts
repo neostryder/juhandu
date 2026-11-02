@@ -9,6 +9,7 @@ import { Processor } from "./pipeline/process.ts";
 import { StoryBuilder } from "./briefing/stories.ts";
 import { Briefer } from "./briefing/briefer.ts";
 import { McpAccess } from "./mcp/access.ts";
+import { MailDoor } from "./mail/door.ts";
 import { Notifier } from "./notify/notifier.ts";
 import { PipeEngine } from "./pipes/engine.ts";
 import { buildJudge } from "./judges/setup.ts";
@@ -76,6 +77,7 @@ const pipes = new PipeEngine({ store, judge: models.judge });
 const notifier = new Notifier({ store, secrets, getBriefing: (id) => briefer.get(id) ?? undefined });
 const publicHosts = (process.env["JUHANDU_PUBLIC_HOST"] ?? "").split(",").map((h) => h.trim()).filter(Boolean);
 const mcp = new McpAccess({ store, secrets });
+const mail = new MailDoor({ store, secrets });
 
 /** One daily briefing is built each morning, once the hour has passed and no daily one exists for today (local time). */
 function dailyBriefingDue(now: Date): boolean {
@@ -84,7 +86,7 @@ function dailyBriefingDue(now: Date): boolean {
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   return !store.listBriefings(10).some((b) => b.kind === "daily" && Date.parse(b.createdAt) >= start);
 }
-const appDeps: AppDeps = { store, ingestor, secrets, watch, processor: models.processor, briefer, pipes, proposer: models.proposer, ask: models.ask, notifier, mcp, settings, publicHosts, webRoot: join(root, "web"), version };
+const appDeps: AppDeps = { store, ingestor, secrets, watch, processor: models.processor, briefer, pipes, proposer: models.proposer, ask: models.ask, notifier, mcp, mail, settings, publicHosts, webRoot: join(root, "web"), version };
 if (models.videoReader) appDeps.videoReader = models.videoReader;
 if (models.summarizer) appDeps.summarizer = models.summarizer;
 const server = createApp(appDeps);

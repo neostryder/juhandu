@@ -119,6 +119,10 @@ The Connect screen sends the daily briefing by email, Telegram or Discord. Email
 
 Juhandu has an MCP server so an AI assistant can read your briefing, items, feeds, rules and pipes. It answers at `/mcp` over HTTP, and `node src/mcp/stdio.ts` bridges it to assistants that speak MCP over standard input and output. The Connect screen can create an access token, which is shown once; once a token exists, every request must carry it. Without a token, the endpoint answers only programs on this machine, so a request through a proxy or one addressed to a name in `JUHANDU_PUBLIC_HOST` needs the token. Letting assistants vote, mark items read or build a briefing is off by default, and so is letting them see private feeds.
 
+### Newsletters
+
+Newsletters can arrive beside your feeds: a mail filter or other program pushes each one to Juhandu as JSON, and it lands in the Newsletters folder at the private tier. Juhandu never logs in to a mailbox.
+
 ### Videos
 
 ```mermaid

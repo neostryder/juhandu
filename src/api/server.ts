@@ -35,6 +35,8 @@ import { McpServer } from "../mcp/server.ts";
 import { MIN_HUMAN_TEST, MIN_HUMAN_TRAIN, buildTrainingExport, parseLanes, toJsonl } from "../training/export.ts";
 import type { McpAccess } from "../mcp/access.ts";
 import { cameThroughProxy } from "../mcp/access.ts";
+import type { MailDoor } from "../mail/door.ts";
+import { MailError, MAX_MAIL_BODY } from "../mail/door.ts";
 import type { AppSettings } from "../settings/settings.ts";
 import { TraktAuthError, TraktHttpError, TraktNotConnected, TraktRateLimited } from "../watch/trakt.ts";
 import type { WatchService } from "../watch/watch.ts";
@@ -65,6 +67,8 @@ export interface AppDeps {
   notifier?: Notifier;
   /** The MCP door for AI assistants. Without it, /mcp answers 404. */
   mcp?: McpAccess;
+  /** The mail door, where pushed newsletter mail arrives. Without it, /inbound/mail answers 404. */
+  mail?: MailDoor;
   /** The Connect screen's model and video settings. Without it, those settings can only be changed through the environment. */
   settings?: AppSettings;
   /** Host names the server answers on besides this machine's own (JUHANDU_PUBLIC_HOST), for a reverse proxy with a public name. */
@@ -356,10 +360,49 @@ export function createApp(deps: AppDeps): Server {
       return send(res, 200, answer);
     }
 
+    if (path === "/inbound/mail") {
+      const door = deps.mail;
+      if (!door || !(await door.tokenSet())) throw new HttpError(404, "Not found");
+      const refused = guard.refusal({ host: req.headers.host, origin: req.headers.origin });
+      if (refused) throw new HttpError(403, refused);
+      if (method !== "POST") {
+        res.writeHead(405, { ...SECURITY_HEADERS, allow: "POST", "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: "Use POST" }));
+        return;
+      }
+      if (!(await door.authorized(req.headers.authorization))) throw new HttpError(401, "The mail token is missing or wrong. Send the current token from the Connect screen as Authorization: Bearer <token>.");
+      try {
+        door.checkRate();
+        if (!String(req.headers["content-type"] ?? "").toLowerCase().startsWith("application/json")) throw new HttpError(415, "Send the body as JSON with Content-Type: application/json.");
+        const result = door.accept(await readJson(req, MAX_MAIL_BODY));
+        return send(res, result.inserted ? 201 : 200, result.inserted ? { inserted: true, itemId: result.itemId } : { inserted: false });
+      } catch (error) {
+        if (error instanceof MailError) throw new HttpError(error.status, error.message);
+        throw error;
+      }
+    }
+
     if (path.startsWith("/api/")) {
       const refused = guard.refusal({ host: req.headers.host, origin: req.headers.origin });
       if (refused) throw new HttpError(403, refused);
       requireJsonBody(req);
+      if (path === "/api/mail" && method === "GET") {
+        if (!deps.mail) return send(res, 200, { available: false });
+        return send(res, 200, { available: true, ...(await deps.mail.status()) });
+      }
+      if (path === "/api/mail" && method === "PUT") {
+        if (!deps.mail) throw new HttpError(503, "The mail door is not set up");
+        const body = await readJson(req);
+        let token: string | undefined;
+        if (body["token"] === "new") {
+          try {
+            token = await deps.mail.newToken();
+          } catch (error) {
+            throw new HttpError(503, error instanceof Error ? error.message : "A token could not be made");
+          }
+        } else if (body["token"] === null) await deps.mail.clearToken();
+        return send(res, 200, { available: true, ...(await deps.mail.status()), ...(token ? { token } : {}) });
+      }
       if (method === "GET" && path === "/api/notify") {
         if (!deps.notifier) return send(res, 200, { channels: [], recent: [] });
         return send(res, 200, { channels: await deps.notifier.status(), recent: store.listDeliveries(10) });
