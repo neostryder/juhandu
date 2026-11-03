@@ -50,6 +50,7 @@ export class Processor {
   private readonly clock: () => Date;
   private readonly semanticCache = new Map<string, SemanticVectors>();
   private tasteCache: { key: string; model: TasteModel } | null = null;
+  private tasteScoresVersion: string | undefined;
   private readonly durations: VideoDurations | null;
 
   constructor(store: Store, embedder: Embedder | null, clock: () => Date = () => new Date(), durations: VideoDurations | null = null) {
@@ -92,7 +93,7 @@ export class Processor {
   }
 
   /** The tag current vectors carry, or null when embeddings are off or the provider cannot say yet. */
-  private async currentTag(): Promise<string | null> {
+  async currentTag(): Promise<string | null> {
     try {
       return (await this.embedder?.tag()) ?? null;
     } catch (error) {
@@ -143,12 +144,23 @@ export class Processor {
 
   private taste(modelTag: string): TasteModel {
     const { liked, disliked } = this.store.votedVectors(modelTag);
-    const key = `${modelTag}:${liked.length}:${disliked.length}`;
+    const key = `${modelTag}:${liked.length}:${disliked.length}:${this.store.getMeta("votes_version")}`;
     if (this.tasteCache?.key !== key) this.tasteCache = { key, model: new TasteModel(liked, disliked) };
     return this.tasteCache.model;
   }
 
+  async refreshTaste(): Promise<void> {
+    const modelTag = await this.currentTag();
+    const taste = modelTag ? this.taste(modelTag) : null;
+    this.store.refreshTasteScores(modelTag, (vec) => {
+      const result = taste?.score(vec);
+      return result?.ready ? result.score : null;
+    });
+    this.tasteScoresVersion = this.store.getMeta("votes_version");
+  }
+
   async decidePending(priority: Priority = "background", limit = 500): Promise<number> {
+    if (this.tasteScoresVersion !== this.store.getMeta("votes_version")) await this.refreshTaste();
     const pending: PendingItem[] = this.store.itemsNeedingDecision(limit);
     if (!pending.length) return 0;
     const rules = this.store.listRules();

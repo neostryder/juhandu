@@ -29,6 +29,7 @@ import type { DataTier, ItemView, NewRule, Proposal, Source, Store } from "../st
 import type { Proposer } from "../proposals/proposer.ts";
 import type { LearningAsk } from "../taste/ask.ts";
 import { ruleMeters } from "../taste/meter.ts";
+import { tasteTopics } from "../taste/taste.ts";
 import { CHANNELS, NotifyError } from "../notify/notifier.ts";
 import type { ChannelId, Notifier } from "../notify/notifier.ts";
 import { McpServer } from "../mcp/server.ts";
@@ -115,6 +116,14 @@ const TYPES: Record<string, string> = {
   ".png": "image/png",
   ".ico": "image/x-icon",
 };
+
+/** The messages the taste routes answer with; any other error on a taste route is answered with the generic one. */
+const TASTE_ERRORS = {
+  itemIds: "The request body needs an itemIds array of 1 to 500 positive integer item ids.",
+  noVotes: "None of the given item ids has a vote that belongs to a topic, so nothing was reset.",
+  unavailable: "This reset cannot be undone because it does not exist, was already undone, or is more than 7 days old.",
+  request: "Could not complete the taste request, so check the request and try again.",
+} as const;
 
 const SECURITY_HEADERS: Record<string, string> = {
   "x-content-type-options": "nosniff",
@@ -667,6 +676,25 @@ export function createApp(deps: AppDeps): Server {
         const meters = ruleMeters(store);
         return send(res, 200, { rules: store.listRules().map((rule) => ({ ...rule, matched: counts.get(rule.id)?.acting ?? 0, shadowMatched: counts.get(rule.id)?.shadow ?? 0, meter: meters.get(rule.id) ?? null })) });
       }
+      if (method === "GET" && path === "/api/taste/topics") {
+        return send(res, 200, { topics: tasteTopics(store, await deps.processor?.currentTag() ?? null), undo: store.latestVoteReset() });
+      }
+      if (method === "POST" && path === "/api/taste/reset") {
+        const body = await readJson(req);
+        const ids = body["itemIds"];
+        if (!Array.isArray(ids) || ids.length < 1 || ids.length > 500 || ids.some((id) => !Number.isSafeInteger(id) || id < 1)) throw new HttpError(400, TASTE_ERRORS.itemIds);
+        const reset = store.resetVotes(ids, await deps.processor?.currentTag() ?? null);
+        if (!reset) throw new HttpError(400, TASTE_ERRORS.noVotes);
+        await deps.processor?.refreshTaste();
+        return send(res, 200, reset);
+      }
+      const undoTasteMatch = path.match(/^\/api\/taste\/reset\/(\d+)\/undo$/);
+      if (method === "POST" && undoTasteMatch) {
+        const result = store.undoVoteReset(Number(undoTasteMatch[1]));
+        if (!result) throw new HttpError(404, TASTE_ERRORS.unavailable);
+        await deps.processor?.refreshTaste();
+        return send(res, 200, result);
+      }
       if (method === "GET" && path === "/api/proposals") {
         const proposals = store.listProposals("pending").map((p) => proposalView(store, p));
         return send(res, 200, { proposals });
@@ -811,6 +839,7 @@ export function createApp(deps: AppDeps): Server {
           const vote = body["vote"];
           if (vote !== 1 && vote !== -1 && vote !== 0) throw new HttpError(400, "Vote must be 1, -1 or 0");
           if (!store.setVote(id, vote, typeof body["reason"] === "string" ? body["reason"] : "")) throw new HttpError(404, "No such item");
+          await deps.processor?.refreshTaste();
           return send(res, 200, { ok: true });
         }
         if (!store.restoreItem(id)) throw new HttpError(404, "No such item, or it was never filtered");
@@ -907,11 +936,12 @@ export function createApp(deps: AppDeps): Server {
         res.end();
         return;
       }
-      if (error instanceof HttpError) return send(res, error.status, { error: error.message });
+      const message = (value: string) => req.url?.startsWith("/api/taste/") && !(Object.values(TASTE_ERRORS) as string[]).includes(value) ? TASTE_ERRORS.request : value;
+      if (error instanceof HttpError) return send(res, error.status, { error: message(error.message) });
       if (error instanceof SettingsError) return send(res, error.status, { error: error.message, ...(error.code ? { code: error.code } : {}), ...(error.place ? { place: error.place } : {}) });
-      if (error instanceof NoEndpointError) return send(res, 503, { error: "No model is available right now" });
+      if (error instanceof NoEndpointError) return send(res, 503, { error: message("No model is available right now") });
       console.error("Unhandled request error:", error);
-      send(res, 500, { error: "Internal error" });
+      send(res, 500, { error: message("Internal error") });
     });
   });
 }

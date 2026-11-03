@@ -557,6 +557,22 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (kind, tmdb_id)
   );
   `,
+  `
+  CREATE TABLE vote_resets (
+    id INTEGER PRIMARY KEY,
+    cleared INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    undone_at TEXT
+  );
+  CREATE TABLE vote_archive (
+    reset_id INTEGER NOT NULL,
+    item_id INTEGER NOT NULL,
+    vote INTEGER NOT NULL,
+    reason TEXT,
+    voted_at TEXT NOT NULL,
+    PRIMARY KEY (reset_id, item_id)
+  );
+  `,
 ];
 
 type Row = Record<string, unknown>;
@@ -1550,6 +1566,89 @@ export class Store {
 
   // ---- votes ----
 
+  topicVotes(model: string): { id: number; title: string; vote: number; reason: string; votedAt: string; itemAt: string; vec: Float32Array }[] {
+    const rows = this.db.prepare(
+      `SELECT i.id, i.title, COALESCE(i.published_at, i.fetched_at) AS item_at, v.vote, v.reason, v.created_at, e.vec
+       FROM votes v JOIN items i ON i.id = v.item_id JOIN embeddings e ON e.item_id = i.id AND e.model = ?
+       ORDER BY v.created_at DESC, i.id DESC`,
+    ).all(model) as Row[];
+    return rows.map((r) => ({ id: Number(r["id"]), title: String(r["title"]), vote: Number(r["vote"]), reason: String(r["reason"] ?? ""), votedAt: String(r["created_at"]), itemAt: String(r["item_at"]), vec: fromBlob(r["vec"] as Uint8Array) }));
+  }
+
+  private votesChanged(): void {
+    this.setMeta("votes_version", String(Number(this.getMeta("votes_version") ?? 0) + 1));
+    this.db.prepare("UPDATE decisions SET taste = NULL").run();
+  }
+
+  refreshTasteScores(model: string | null, score: (vec: Float32Array) => number | null): void {
+    const rows = this.db.prepare("SELECT e.item_id, e.vec FROM embeddings e JOIN decisions d ON d.item_id = e.item_id WHERE e.model = ?").all(model) as Row[];
+    const update = this.db.prepare("UPDATE decisions SET taste = ? WHERE item_id = ?");
+    for (const r of rows) update.run(score(fromBlob(r["vec"] as Uint8Array)), Number(r["item_id"]));
+  }
+
+  latestVoteReset(now = new Date()): { resetId: number; cleared: number; at: string } | null {
+    const row = this.db.prepare("SELECT id, cleared, created_at FROM vote_resets WHERE undone_at IS NULL AND created_at > ? ORDER BY created_at DESC, id DESC LIMIT 1")
+      .get(new Date(now.getTime() - 7 * 86400_000).toISOString()) as Row | undefined;
+    return row ? { resetId: Number(row["id"]), cleared: Number(row["cleared"]), at: String(row["created_at"]) } : null;
+  }
+
+  resetVotes(itemIds: number[], model: string | null, now = new Date()): { resetId: number; cleared: number } | null {
+    this.db.exec("BEGIN");
+    try {
+      const votes = this.db.prepare(
+        `SELECT v.* FROM votes v JOIN embeddings e ON e.item_id = v.item_id AND e.model = ?
+         WHERE v.item_id IN (SELECT value FROM json_each(?))`,
+      ).all(model, JSON.stringify(itemIds)) as Row[];
+      if (!votes.length) {
+        this.db.exec("ROLLBACK");
+        return null;
+      }
+      const result = this.db.prepare("INSERT INTO vote_resets (cleared, created_at) VALUES (?, ?)").run(votes.length, now.toISOString());
+      const resetId = Number(result.lastInsertRowid);
+      const archive = this.db.prepare("INSERT INTO vote_archive (reset_id, item_id, vote, reason, voted_at) VALUES (?, ?, ?, ?, ?)");
+      const remove = this.db.prepare("DELETE FROM votes WHERE item_id = ?");
+      for (const v of votes) {
+        archive.run(resetId, Number(v["item_id"]), Number(v["vote"]), v["reason"] as string | null, String(v["created_at"]));
+        remove.run(Number(v["item_id"]));
+      }
+      this.db.prepare("DELETE FROM vote_archive WHERE reset_id IN (SELECT id FROM vote_resets WHERE created_at < ?)")
+        .run(new Date(now.getTime() - 30 * 86400_000).toISOString());
+      this.votesChanged();
+      this.db.exec("COMMIT");
+      return { resetId, cleared: votes.length };
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  undoVoteReset(resetId: number, now = new Date()): { restored: number; skipped: number } | null {
+    this.db.exec("BEGIN");
+    try {
+      const reset = this.db.prepare("SELECT id FROM vote_resets WHERE id = ? AND undone_at IS NULL AND created_at >= ?")
+        .get(resetId, new Date(now.getTime() - 7 * 86400_000).toISOString());
+      if (!reset) {
+        this.db.exec("ROLLBACK");
+        return null;
+      }
+      const archived = this.db.prepare("SELECT * FROM vote_archive WHERE reset_id = ?").all(resetId) as Row[];
+      const insert = this.db.prepare(
+        `INSERT INTO votes (item_id, vote, reason, created_at) SELECT ?, ?, COALESCE(?, ''), ? WHERE EXISTS (SELECT 1 FROM items WHERE id = ?)
+         ON CONFLICT(item_id) DO UPDATE SET vote = excluded.vote, reason = excluded.reason, created_at = excluded.created_at
+         WHERE votes.created_at < excluded.created_at`,
+      );
+      let restored = 0;
+      for (const v of archived) restored += Number(insert.run(Number(v["item_id"]), Number(v["vote"]), v["reason"] as string | null, String(v["voted_at"]), Number(v["item_id"])).changes);
+      this.db.prepare("UPDATE vote_resets SET undone_at = ? WHERE id = ?").run(now.toISOString(), resetId);
+      this.votesChanged();
+      this.db.exec("COMMIT");
+      return { restored, skipped: archived.length - restored };
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   /** Records a vote (1 or -1) with an optional reason, or clears it with 0. */
   setVote(itemId: number, vote: number, reason = "", now = new Date()): boolean {
     if (!this.db.prepare("SELECT 1 FROM items WHERE id = ?").get(itemId)) return false;
@@ -1558,6 +1657,7 @@ export class Store {
       this.db
         .prepare("INSERT INTO votes (item_id, vote, reason, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(item_id) DO UPDATE SET vote = excluded.vote, reason = excluded.reason, created_at = excluded.created_at")
         .run(itemId, vote > 0 ? 1 : -1, reason.slice(0, 500), now.toISOString());
+    this.votesChanged();
     return true;
   }
 

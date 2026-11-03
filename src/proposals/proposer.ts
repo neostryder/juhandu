@@ -22,7 +22,8 @@ export interface ProposerOptions {
   maxRecentRate: number;
 }
 
-export const DEFAULT_OPTIONS: ProposerOptions = { minVotes: 3, clusterSimilarity: 0.75, maxDraftsPerRun: 4, maxPending: 20, coverage: 0.67, maxRecentRate: 0.25 };
+export const SAME_TOPIC_SIMILARITY = 0.75;
+export const DEFAULT_OPTIONS: ProposerOptions = { minVotes: 3, clusterSimilarity: SAME_TOPIC_SIMILARITY, maxDraftsPerRun: 4, maxPending: 20, coverage: 0.67, maxRecentRate: 0.25 };
 
 export interface ProposeRun {
   proposed: number;

@@ -17,6 +17,19 @@ const TYPE_CHOICES = [
   ["domain", "Domain"],
   ["duration", "Video length"],
 ];
+const TASTE_TEXT = {
+  counts: "Liked: {liked}, disliked: {disliked}",
+  reset: "Reset topic",
+  confirm: "This clears only the votes in this topic. Votes to clear: {n}. Your other votes, rules, and topics stay as they are.",
+  cancel: "Keep votes",
+  undo: "Restore cleared votes ({n})",
+  empty: "Like or Dislike items in Reading, and topics show up here once some of your votes share a subject.",
+  unavailable: "Could not load topics. Reload the page or try again later.",
+  failed: "Could not finish the reset or undo, and no votes were changed. Try again.",
+  cleared: "Topic reset. Votes cleared: {n}. Taste scores are updated.",
+  restored: "Reset undone. Votes restored: {restored}. Votes skipped because the item was voted on again since: {skipped}.",
+  limit: "Reset is off for this topic because one reset can clear at most {n} votes.",
+};
 
 /** A length in seconds as words: 90 is "1 min 30 s", 7200 is "2 h". @param {number} seconds */
 function lengthText(seconds) {
@@ -91,6 +104,9 @@ class VzRules extends HTMLElement {
   /** @type {any} */ preview = null;
   /** @type {Set<string>} */ unticked = new Set();
   /** @type {string | null} */ confirming = null;
+  /** @type {{ topics: { itemIds: number[], liked: number, disliked: number, titles: string[], lastVotedAt: string }[], undo: { resetId: number, cleared: number, at: string } | null } | null} */ taste = null;
+  /** @type {number | null} */ confirmingTaste = null;
+  tasteBusy = false;
   previewTimer = 0;
   previewSeq = 0;
 
@@ -106,6 +122,7 @@ class VzRules extends HTMLElement {
         <section id="importPanel" hidden></section>
         <ol id="list" class="rules"></ol>
         <section id="learning" class="learning" hidden></section>
+        <details class="learning taste"><summary id="tasteHead"><h3>Topics Juhandu has learned</h3></summary><div id="taste"></div></details>
         <div id="scrim" class="scrim" hidden></div>
         <aside id="drawer" class="drawer" role="dialog" aria-modal="true" aria-label="Rule editor" hidden></aside>
       </div>`;
@@ -132,14 +149,16 @@ class VzRules extends HTMLElement {
 
   async load() {
     try {
-      const [{ rules }, { sources }, found, learning] = await Promise.all([api("/api/rules"), api("/api/sources"), api("/api/proposals").catch(() => ({ proposals: [] })), api("/api/settings/learning").catch(() => null)]);
+      const [{ rules }, { sources }, found, learning, taste] = await Promise.all([api("/api/rules"), api("/api/sources"), api("/api/proposals").catch(() => ({ proposals: [] })), api("/api/settings/learning").catch(() => null), api("/api/taste/topics").catch(() => null)]);
       this.rules = rules;
       this.sources = sources;
       this.proposals = found.proposals;
       this.learning = learning;
+      this.taste = taste;
       this.renderSuggested();
       this.renderList();
       this.renderLearning();
+      this.renderTaste();
       this.say(rules.length || this.proposals.length ? "" : "No rules yet. Make one with New rule, or import a list of words or domains.");
     } catch (error) {
       this.say(messageOf(error));
@@ -280,6 +299,76 @@ class VzRules extends HTMLElement {
       el("div", { class: "learning-row" }, toggle, el("span", { text: "Now and then, ask me about an item the AI is unsure of" }), el("label", { class: "muted small" }, "At most ", perDay, " a day")),
       el("p", { class: "muted small", text: "The question shows at the top of Reading with Like, Dislike and an optional reason. Your answer teaches the model the most when it is unsure." }),
     );
+  }
+
+  renderTaste() {
+    const box = this.$("taste");
+    const taste = this.taste;
+    if (!taste) {
+      box.replaceChildren(el("p", { class: "muted small", text: TASTE_TEXT.unavailable }));
+      return;
+    }
+    const undo = taste.undo;
+    box.replaceChildren(...[
+      undo ? el("button", { id: "tasteUndo", type: "button", disabled: this.tasteBusy, text: TASTE_TEXT.undo.replace("{n}", String(undo.cleared)), onClick: () => this.changeTaste(`/api/taste/reset/${undo.resetId}/undo`) }) : null,
+      !taste.topics.length ? el("p", { class: "muted small", text: TASTE_TEXT.empty }) : null,
+      el("ol", { class: "rules" }, ...taste.topics.map((topic) => {
+        const id = topic.itemIds[0];
+        const confirming = this.confirmingTaste === id;
+        const tooLarge = topic.itemIds.length > 500;
+        const reset = el("button", {
+          id: `tasteReset${id}`, type: "button", class: "quiet danger", disabled: this.tasteBusy || tooLarge,
+          "aria-describedby": tooLarge ? `tasteLimit${id}` : undefined,
+          "aria-expanded": String(confirming), "aria-controls": `tasteConfirm${id}`, text: TASTE_TEXT.reset,
+          onClick: () => {
+            this.confirmingTaste = confirming ? null : id ?? null;
+            this.renderTaste();
+            this.$(confirming ? `tasteReset${id}` : `tasteConfirmButton${id}`).focus();
+          },
+        });
+        const confirmation = el("div", { id: `tasteConfirm${id}`, class: "row", hidden: !confirming },
+          el("p", { id: `tastePrompt${id}`, class: "small", text: TASTE_TEXT.confirm.replace("{n}", String(topic.itemIds.length)) }),
+          el("button", { id: `tasteConfirmButton${id}`, type: "button", class: "danger", disabled: this.tasteBusy, "aria-describedby": `tastePrompt${id}`, text: TASTE_TEXT.reset, onClick: () => this.changeTaste("/api/taste/reset", topic.itemIds) }),
+          el("button", { type: "button", disabled: this.tasteBusy, text: TASTE_TEXT.cancel, onClick: () => cancel() }),
+        );
+        const cancel = () => {
+          this.confirmingTaste = null;
+          this.renderTaste();
+          this.$(`tasteReset${id}`).focus();
+        };
+        confirmation.addEventListener("keydown", (event) => {
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            cancel();
+          }
+        });
+        return el("li", { class: "rule" },
+          el("div", { class: "body" }, ...topic.titles.map((title) => el("p", { class: "sentence", text: title })),
+            el("p", { class: "meta muted", text: TASTE_TEXT.counts.replace("{liked}", String(topic.liked)).replace("{disliked}", String(topic.disliked)) }),
+            tooLarge ? el("p", { id: `tasteLimit${id}`, class: "meta muted", text: TASTE_TEXT.limit.replace("{n}", "500") }) : null, confirmation),
+          el("div", { class: "controls" }, reset),
+        );
+      })),
+    ].filter((node) => node !== null));
+  }
+
+  /** @param {string} path @param {number[]} [itemIds] */
+  async changeTaste(path, itemIds) {
+    if (this.tasteBusy) return;
+    this.tasteBusy = true;
+    this.renderTaste();
+    try {
+      const result = await api(path, { method: "POST", ...(itemIds ? { json: { itemIds } } : {}) });
+      this.confirmingTaste = null;
+      await this.load();
+      this.say(itemIds ? TASTE_TEXT.cleared.replace("{n}", String(result.cleared)) : TASTE_TEXT.restored.replace("{restored}", String(result.restored)).replace("{skipped}", String(result.skipped)));
+    } catch {
+      this.say(TASTE_TEXT.failed);
+    } finally {
+      this.tasteBusy = false;
+      this.renderTaste();
+      (this.shadowRoot?.getElementById("tasteUndo") ?? this.$("tasteHead")).focus();
+    }
   }
 
   /** @param {Record<string, unknown>} change */
@@ -681,6 +770,9 @@ const STYLES = `
   .learning h3 { font-size: 22px; margin-bottom: 4px; }
   .learning-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .learning select { width: auto; min-width: 72px; }
+  .taste > summary { cursor: pointer; min-height: 44px; font-family: var(--font-display); font-size: 22px; font-style: italic; font-weight: 700; color: var(--text-strong); }
+  .taste > summary h3 { display: inline; }
+  #taste > button { margin-top: 10px; }
   section#importPanel { margin-top: 12px; }
   .import { background: var(--bg-raised); border: 1px solid var(--line-strong); border-radius: 6px; padding: 18px 20px; }
   .check { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; }

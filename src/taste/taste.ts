@@ -1,4 +1,25 @@
 import { dot, kmeans, mean } from "./vectors.ts";
+import { cluster, SAME_TOPIC_SIMILARITY } from "../proposals/proposer.ts";
+import type { Store } from "../store/store.ts";
+
+export function tasteTopics(store: Store, model: string | null): { itemIds: number[]; liked: number; disliked: number; titles: string[]; lastVotedAt: string }[] {
+  if (!model) return [];
+  const votes = store.topicVotes(model);
+  const byId = new Map(votes.map((v) => [v.id, v]));
+  return cluster(votes, SAME_TOPIC_SIMILARITY)
+    .map((itemIds) => {
+      const members = itemIds.map((id) => byId.get(id)!);
+      if (members.length === 1 && !members[0]!.reason.trim()) return null;
+      const liked = members.filter((v) => v.vote > 0).length;
+      const lastVotedAt = members.reduce((last, v) => v.votedAt > last ? v.votedAt : last, "");
+      const titles = members.sort((a, b) => b.itemAt.localeCompare(a.itemAt) || b.id - a.id).slice(0, 3).map((v) => v.title);
+      return { itemIds, liked, disliked: members.length - liked, titles, lastVotedAt };
+    })
+    .filter((topic) => topic !== null)
+    .sort((a, b) => b.itemIds.length - a.itemIds.length || b.lastVotedAt.localeCompare(a.lastVotedAt))
+    .slice(0, 50)
+    .sort((a, b) => b.lastVotedAt.localeCompare(a.lastVotedAt));
+}
 
 /** Affinity of an item to a set of liked examples: 0.6 nearest of up to three prototypes plus 0.4 mean of the top three neighbours. */
 export class Affinity {

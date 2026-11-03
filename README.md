@@ -97,6 +97,8 @@ Every item gets an embedding from your embedding model. Like or dislike an item 
 
 When enough of your votes point the same way, a model drafts a rule from them, tests it against your past votes and offers it on the Rules screen. An accepted proposal is tried quietly until it passes a promotion meter: 30 votes at 95 percent agreement, or 50 votes at 98 percent for a rule that would match a tenth or more of your items. A live learned rule still lets 1 in 20 of its matches through so you can check it is still right. Proposals need both a chat model and an embedding model.
 
+A collapsed section on the Rules screen groups your voted items by topic, and Reset on a topic clears only the votes in that topic and recalculates your taste scores right away without changing other votes or rules. A reset clears at most 500 votes, and you can undo the newest one for 7 days, except for items you have voted on again since.
+
 ### Summaries and stories
 
 Each item that is shown gets a one-sentence summary of at most 240 characters, along with a quote from the item that backs it up. Juhandu checks the quote against the item's own text, and a summary whose quote is not found is marked unchecked. Item text that tries to give instructions to the model is flagged. An item with too little text to summarize shows its headline instead.
