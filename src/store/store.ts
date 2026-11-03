@@ -1545,8 +1545,8 @@ export class Store {
   }
 
   /** The newest items with their rule-relevant text, for previewing a draft rule. */
-  recentItemsForPreview(limit: number): PendingItem[] {
-    return this.pending("1 = 1", [], Math.min(Math.max(limit, 1), 1000), "i.id DESC");
+  recentItemsForPreview(limit: number, since?: Date): PendingItem[] {
+    return this.pending(since ? "COALESCE(i.published_at, i.fetched_at) >= ?" : "1 = 1", since ? [since.toISOString()] : [], Math.min(Math.max(limit, 1), 1000), since ? "COALESCE(i.published_at, i.fetched_at) DESC, i.id DESC" : "i.id DESC");
   }
 
   saveEmbedding(itemId: number, model: string, vector: Float32Array, now = new Date()): void {
@@ -1682,6 +1682,12 @@ export class Store {
            hits = excluded.hits, incomplete = excluded.incomplete, rules_version = excluded.rules_version, decided_at = excluded.decided_at`,
       )
       .run(itemId, decision.verdict, decision.hideReason, decision.pinned ? 1 : 0, decision.score, decision.taste, JSON.stringify(decision.hits), decision.incomplete ? 1 : 0, this.rulesVersion(), now.toISOString());
+  }
+
+  heldItemIds(itemIds: number[]): Set<number> {
+    if (!itemIds.length) return new Set();
+    const rows = this.db.prepare(`SELECT item_id FROM decisions WHERE verdict = 'hide' AND restored = 0 AND item_id IN (${itemIds.map(() => "?").join(",")})`).all(...itemIds) as Row[];
+    return new Set(rows.map((row) => Number(row["item_id"])));
   }
 
   /** One-click restore: the item shows in the inbox from now on, even if a rule still matches. */

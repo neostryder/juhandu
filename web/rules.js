@@ -165,6 +165,18 @@ class VzRules extends HTMLElement {
     }
   }
 
+  /** @param {string} id */
+  async openRule(id) {
+    if (!/^\d+$/.test(id)) return;
+    await this.load();
+    const rule = this.rules.find((rule) => rule.id === Number(id));
+    if (!rule) return;
+    const row = this.$(`rule${rule.id}`);
+    row.scrollIntoView({ block: "center" });
+    row.focus({ preventScroll: true });
+    this.edit(rule);
+  }
+
   renderList() {
     const list = this.$("list");
     list.replaceChildren(
@@ -182,7 +194,7 @@ class VzRules extends HTMLElement {
         const confirming = this.confirming === String(rule.id);
         return el(
           "li",
-          { class: `rule ${rule.status}` },
+          { id: `rule${rule.id}`, class: `rule ${rule.status}`, tabIndex: -1 },
           el("div", { class: "body" }, el("p", { class: "sentence" }, ...sentence(rule, this.sources)), el("p", { class: "meta muted", text: `${rule.status === "shadow" ? "Trying quietly. " : rule.status === "disabled" ? "Off. " : ""}${outcomeText(rule)}` }), meterView(rule)),
           el(
             "div",
@@ -510,11 +522,12 @@ class VzRules extends HTMLElement {
       const seq = ++this.previewSeq;
       error.textContent = "";
       try {
-        const result = await api("/api/rules/preview", { json: { condition: readCondition() } });
+        const previewKind = kind.value === "block" ? "block" : "weight";
+        const result = await api("/api/rules/preview", { json: { condition: readCondition(), scope: readScope(), kind: previewKind } });
         if (seq !== this.previewSeq) return;
         const matched = /** @type {any[]} */ (result.rows).filter((r) => r.matched);
         previewBox.replaceChildren(
-          el("p", { class: "count", text: `Would match ${result.matched} of the newest ${result.total} items.` }),
+          el("p", { class: "count", text: "Would match {n} of {total} checked from the last {days} days.".replace("{n}", String(result.matched)).replace("{total}", String(result.total)).replace("{days}", String(result.days)) + (previewKind === "block" ? " " + "Newly hidden by this rule: {n}.".replace("{n}", String(result.wouldNewlyHide)) : "") }),
           ...(matched.length
             ? [el("ul", {}, ...matched.slice(0, 8).map((r) => el("li", { text: r.similarity === null ? r.title : `${r.title} (${Math.round(r.similarity * 100)}%)` })))]
             : type.value === "semantic" && !result.rows.some((/** @type {any} */ r) => r.similarity !== null)
@@ -571,7 +584,11 @@ class VzRules extends HTMLElement {
       sync();
       schedulePreview();
     });
-    kind.addEventListener("change", sync);
+    kind.addEventListener("change", () => {
+      sync();
+      schedulePreview();
+    });
+    scopeValue.addEventListener("change", schedulePreview);
     strength.addEventListener("input", sync);
     threshold.addEventListener("input", () => {
       sync();

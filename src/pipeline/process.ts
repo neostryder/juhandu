@@ -2,8 +2,8 @@ import { itemEmbeddingText } from "../models/embedder.ts";
 import type { Embedder } from "../models/embedder.ts";
 import { NoEndpointError } from "../models/pool.ts";
 import type { Priority } from "../models/provider.ts";
-import { evaluateRules } from "../rules/rules.ts";
-import type { Rule, RuleCondition, RuleItem, SemanticCondition } from "../rules/rules.ts";
+import { evaluateRules, ruleApplies } from "../rules/rules.ts";
+import type { Rule, RuleCondition, RuleItem, RuleScope, SemanticCondition } from "../rules/rules.ts";
 import { youtubeVideoId } from "../video/ids.ts";
 import type { VideoDurations } from "../video/duration.ts";
 import type { PendingItem, Store } from "../store/store.ts";
@@ -182,8 +182,10 @@ export class Processor {
   }
 
   /** Shows how a draft condition would act on the most recent items, strongest match first, so a threshold is chosen by looking, not guessing. */
-  async preview(condition: RuleCondition, limit = 200): Promise<PreviewRow[]> {
-    const items = this.store.recentItemsForPreview(limit);
+  async preview(condition: RuleCondition, limit = 1000, scope: RuleScope = { type: "all" }, kind: "block" | "weight" = "block"): Promise<PreviewRow[]> {
+    const since = new Date(this.clock().getTime() - 30 * 86_400_000);
+    const items = this.store.recentItemsForPreview(limit, since).filter((item) => ruleApplies(scope, item));
+    const rule: Rule = { id: 0, kind, scope, condition, weight: 0, status: "active", origin: "user", note: "", version: 1, createdAt: "", updatedAt: "" };
     const modelTag = await this.currentTag();
     if (condition.type === "semantic") await this.prepareSemantic(modelTag, "interactive", [condition]);
     const prepared = condition.type === "semantic" && modelTag ? this.semanticCache.get(semanticKey(modelTag, condition)) : undefined;
@@ -192,14 +194,9 @@ export class Processor {
       const ruleItem = { id: item.id, sourceId: item.sourceId, url: item.url, folder: item.folder, title: item.title, text: item.text, author: item.author, ...this.videoSecondsFor(item, known) };
       const vector = modelTag ? this.store.getEmbedding(item.id, modelTag) : undefined;
       let similarity: number | null = null;
-      let matched = false;
-      if (condition.type === "semantic") {
-        similarity = vector && prepared ? semanticSimilarity(vector, prepared) : null;
-        matched = similarity !== null && similarity >= condition.threshold;
-      } else {
-        const decision = evaluateRules([{ id: 0, kind: "block", scope: { type: "all" }, condition, weight: 0, status: "active", origin: "user", note: "", version: 1, createdAt: "", updatedAt: "" }], ruleItem);
-        matched = decision.hits.length > 0;
-      }
+      if (condition.type === "semantic") similarity = vector && prepared ? semanticSimilarity(vector, prepared) : null;
+      const decision = evaluateRules([rule], ruleItem, () => similarity);
+      const matched = decision.hits.length > 0;
       return { itemId: item.id, title: item.title, similarity, matched };
     });
     return rows.sort((a, b) => (b.similarity ?? -2) - (a.similarity ?? -2) || Number(b.matched) - Number(a.matched));

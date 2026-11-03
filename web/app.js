@@ -168,7 +168,7 @@ class VzApp extends HTMLElement {
       element.hidden = this.view !== name;
       if (this.view === name) SCREENS[name]?.().then(() => ready?.(element)).catch(() => {});
     };
-    open("rules", rules);
+    open("rules", rules, (element) => element.openRule(location.hash.replace(/^#\/?rules\/?/, "")));
     open("feeds", feeds, (element) => element.load());
     const pipes = this.$("vz-pipes");
     open("pipes", pipes, (element) => element.load());
@@ -426,7 +426,12 @@ class VzApp extends HTMLElement {
     if (filtered) {
       const hits = (item.decision?.hits ?? []).filter((/** @type {any} */ h) => !h.shadow);
       const blocks = hits.filter((/** @type {any} */ h) => h.kind === "block");
-      const why = (blocks.length ? blocks : hits).map((/** @type {any} */ h) => h.detail);
+      const why = blocks.length ? blocks : hits;
+      const reason = el("p", { class: "why muted", text: why.length ? "Hidden by: " : "Hidden by the taste score." });
+      why.forEach((/** @type {any} */ hit, /** @type {number} */ index) => {
+        if (index) reason.append("; ");
+        reason.append(hit.ruleExists ? el("a", { href: `#/rules/${hit.ruleId}`, text: hit.detail }) : hit.detail);
+      });
       const restore = el("button", {
         type: "button",
         text: "Restore",
@@ -440,7 +445,7 @@ class VzApp extends HTMLElement {
           }
         },
       });
-      card.append(el("p", { class: "why muted", text: why.length ? `Hidden by: ${why.join("; ")}` : "Hidden by the taste score." }), restore);
+      card.append(reason, restore);
     } else {
       attachSwipe(card, (vote) => this.vote(card, vote > 0 ? "like" : "dislike"), gesturesOn);
     }

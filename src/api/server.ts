@@ -237,11 +237,15 @@ function parseScope(raw: unknown): RuleScope {
   return { type: "all" };
 }
 
+function parseKind(raw: unknown, allowed = RULE_KINDS, message = "Rule kind must be block, weight or pin"): RuleKind {
+  if (!allowed.includes(raw as RuleKind)) throw new HttpError(400, message);
+  return raw as RuleKind;
+}
+
 function parseRule(body: Record<string, unknown>, partial: boolean): Partial<NewRule> {
   const rule: Partial<NewRule> = {};
   if (!partial || body["kind"] !== undefined) {
-    if (!RULE_KINDS.includes(body["kind"] as RuleKind)) throw new HttpError(400, "Rule kind must be block, weight or pin");
-    rule.kind = body["kind"] as RuleKind;
+    rule.kind = parseKind(body["kind"]);
   }
   if (!partial || body["condition"] !== undefined) rule.condition = parseCondition(body["condition"]);
   if (!partial || body["scope"] !== undefined) rule.scope = parseScope(body["scope"]);
@@ -799,10 +803,14 @@ export function createApp(deps: AppDeps): Server {
         return send(res, 201, { rule });
       }
       if (method === "POST" && path === "/api/rules/preview") {
-        if (!deps.processor) throw new HttpError(503, "Previews need the processor");
+        if (!deps.processor) throw new HttpError(503, "Rule previews are unavailable because the server's item processor is not running. Try again once the processor is running.");
         const body = await readJson(req);
-        const rows = await deps.processor.preview(parseCondition(body["condition"]));
-        return send(res, 200, { rows: rows.slice(0, 100), matched: rows.filter((r) => r.matched).length, total: rows.length });
+        const kind = parseKind(body["kind"] ?? "block", ["block", "weight"], "Could not preview the rule: unknown rule kind. Send a kind of \"block\" or \"weight\".") as "block" | "weight";
+        const scope = parseScope(body["scope"]);
+        const rows = await deps.processor.preview(parseCondition(body["condition"]), 1000, scope, kind);
+        const matched = rows.filter((r) => r.matched);
+        const alreadyHeld = store.heldItemIds(matched.map((r) => r.itemId)).size;
+        return send(res, 200, { rows: rows.slice(0, 100), matched: matched.length, total: rows.length, days: 30, alreadyHeld, ...(kind === "block" ? { wouldNewlyHide: matched.length - alreadyHeld } : {}) });
       }
       const ruleMatch = path.match(/^\/api\/rules\/(\d+)$/);
       if (ruleMatch) {
@@ -829,7 +837,8 @@ export function createApp(deps: AppDeps): Server {
           sourceId: intParam(url.searchParams.get("source")),
           unreadOnly: url.searchParams.get("unread") === "1",
         });
-        return send(res, 200, { items });
+        const ruleIds = view === "filtered" ? new Set(store.listRules().map((rule) => rule.id)) : null;
+        return send(res, 200, { items: ruleIds ? items.map((item) => ({ ...item, decision: item.decision ? { ...item.decision, hits: item.decision.hits.map((hit) => ({ ...hit, ruleExists: ruleIds.has(hit.ruleId) })) } : null })) : items });
       }
       const actionMatch = path.match(/^\/api\/items\/(\d+)\/(vote|restore)$/);
       if (method === "POST" && actionMatch) {

@@ -224,7 +224,7 @@ test("a rule preview ranks recent items by similarity and counts keyword matches
   const source = store.addSource({ kind: "feed", url: "https://x.example/feed" });
   store.upsertItems(source.id, [item("1", "Rust 2027 edition"), item("2", "Lentil soup recipe"), item("3", "Sponsored gadgets")]);
   const embedder = embedderFor(new EndpointPool([endpoint("local", true)], new EgressGate()), embeddingsFetch());
-  const processor = new Processor(store, embedder);
+  const processor = new Processor(store, embedder, () => new Date("2026-10-06T12:00:00Z"));
   await processor.run();
   const semantic = await processor.preview({ type: "semantic", sentence: "recipe ideas", examples: [], counterExamples: [], threshold: 0.9 });
   assert.equal(semantic[0]!.title, "Lentil soup recipe");
