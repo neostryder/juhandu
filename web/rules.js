@@ -257,7 +257,7 @@ class VzRules extends HTMLElement {
     return el(
       "li",
       { class: "rule suggestion" },
-      el("div", { class: "body" }, el("p", { class: "sentence" }, ...sentence(p, this.sources)), el("p", { class: "meta muted", text: p.rationale }), evidence),
+      el("div", { class: "body" }, el("p", { class: "sentence" }, ...sentence(p, this.sources)), el("p", { class: "meta muted", text: p.rationale }), p.stats?.reason ? el("p", { class: "muted small", text: "Votes giving \"{reason}\": {n}".replace(/\{reason\}|\{n\}/g, (key) => key === "{reason}" ? p.stats.reason : String(p.stats.reasonVotes)) }) : null, evidence),
       el(
         "div",
         { class: "controls" },

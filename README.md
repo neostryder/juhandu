@@ -97,6 +97,8 @@ Every item gets an embedding from your embedding model. Like or dislike an item 
 
 When enough of your votes point the same way, a model drafts a rule from them, tests it against your past votes and offers it on the Rules screen. An accepted proposal is tried quietly until it passes a promotion meter: 30 votes at 95 percent agreement, or 50 votes at 98 percent for a rule that would match a tenth or more of your items. A live learned rule still lets 1 in 20 of its matches through so you can check it is still right. Proposals need both a chat model and an embedding model.
 
+Juhandu also suggests a rule when 3 or more votes of the same kind (all likes or all dislikes) give the same reason, even if the votes are about unrelated topics. Reasons are grouped by meaning, so "too long" and "way too lengthy" count together, and the rule drafted from the items behind those votes is tested against all your past votes and the newest items before it appears in Suggested. Rejecting the suggestion stops those votes from being used for another one.
+
 A collapsed section on the Rules screen groups your voted items by topic, and Reset on a topic clears only the votes in that topic and recalculates your taste scores right away without changing other votes or rules. A reset clears at most 500 votes, and you can undo the newest one for 7 days, except for items you have voted on again since.
 
 ### Summaries and stories

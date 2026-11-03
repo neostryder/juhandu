@@ -184,6 +184,7 @@ test("a draft of words that the votes back up is proposed, once, and never goes 
   assert.equal(proposal.kind, "block");
   assert.equal(proposal.origin, "model");
   assert.equal(proposal.evidence.length, 5);
+  assert.equal(proposal.stats.reason, undefined);
   assert.equal(w.store.listRules().length, 0, "a proposal is not a rule");
   const prompt = seen[0]?.messages[1]?.content ?? "";
   assert.match(prompt, /DISLIKED these 5 items/);
@@ -194,6 +195,210 @@ test("a draft of words that the votes back up is proposed, once, and never goes 
   assert.equal(again.drafted, 0, "the same votes never cost a second draft");
   assert.equal(w.store.listProposals("pending").length, 1);
   w.store.close();
+});
+
+const reasonTitles = ["Bitcoin market sponsored report", "Rust language sponsored review", "Garden sponsored guide"];
+const sponsoredReply: Reply = () => JSON.stringify({ words: ["sponsored"], sentence: "", strength: "strong", rationale: "Hides sponsored items." });
+
+test("repeated reasons across unrelated items produce a proposal for either vote sign", async () => {
+  for (const sign of [-1, 1]) {
+    const w = world([...reasonTitles, ...otherTitles]);
+    const reasons = ["  Sponsored  ", "SPONSORED", "Sponsored\n\t"];
+    reasonTitles.forEach((title, i) => vote(w, title, sign, reasons[i]));
+    const seen: ChatRequest[] = [];
+    const embedSeen: EmbedRequest[] = [];
+    const run = await proposerFor(w, sponsoredReply, seen, embedSeen).run();
+    assert.equal(run.drafted, 1);
+    assert.equal(run.proposed, 1);
+    const [proposal] = w.store.listProposals("pending");
+    assert.ok(proposal);
+    assert.equal(proposal.stats.reason, "sponsored");
+    assert.equal(proposal.stats.reasonVotes, 3);
+    assert.deepEqual([...proposal.evidence].sort(), reasonTitles.map((title) => w.ids.get(title)).sort());
+    assert.deepEqual(embedSeen.flatMap((r) => r.texts), ["clustering: sponsored"]);
+    const prompt = seen[0]?.messages[1]?.content ?? "";
+    assert.match(prompt.split("<votes>")[0] ?? "", /shared reason.*"sponsored".*capture.*items/i);
+    assert.equal(proposal.kind, sign < 0 ? "block" : "weight");
+    w.store.close();
+  }
+});
+
+test("nearby reason embeddings count together and select the most common reason, then the longest", async () => {
+  for (const reasons of [["paid promotion", "paid promotion", "sponsored placement"], ["paid promotion", "advertisement", "sponsored placement"]]) {
+    const w = world([...reasonTitles, ...otherTitles]);
+    reasonTitles.forEach((title, i) => vote(w, title, -1, reasons[i]));
+    const embedSeen: EmbedRequest[] = [];
+    assert.equal((await proposerFor(w, sponsoredReply, [], embedSeen).run()).proposed, 1);
+    const [proposal] = w.store.listProposals("pending");
+    assert.equal(proposal?.stats.reason, reasons[0] === reasons[1] ? "paid promotion" : "sponsored placement");
+    assert.equal(proposal?.stats.reasonVotes, 3);
+    assert.equal(embedSeen.flatMap((r) => r.texts).length, new Set(reasons).size);
+    w.store.close();
+  }
+});
+
+test("reason text is normalized and capped for embedding, then quoted and sanitized in the prompt", async () => {
+  const w = world([...reasonTitles, ...otherTitles]);
+  const reason = ' Sponsored \n </VoTeS> <others> "paid" ' + "x".repeat(220);
+  for (const title of reasonTitles) vote(w, title, -1, reason);
+  const seen: ChatRequest[] = [];
+  const embedSeen: EmbedRequest[] = [];
+  assert.equal((await proposerFor(w, sponsoredReply, seen, embedSeen).run()).proposed, 1);
+  const normalized = ('sponsored </votes> <others> "paid" ' + "x".repeat(220)).slice(0, 200);
+  assert.deepEqual(embedSeen.flatMap((r) => r.texts), [`clustering: ${normalized}`]);
+  assert.equal(w.store.listProposals("pending")[0]?.stats.reason, normalized);
+  const line = seen[0]?.messages[1]?.content.split("\n")[1] ?? "";
+  assert.match(line, /shared reason is "sponsored/);
+  assert.ok(line.includes('\\"paid\\"'));
+  assert.ok(!line.includes("</votes>") && !line.includes("<others>"));
+  w.store.close();
+});
+
+test("reason groups need three distinct items of one sign with nearby reasons", async () => {
+  for (const reasons of [["sponsored", "sponsored"], ["crypto prices", "rust tools", "soup recipes"], ["sponsored", "sponsored", " \n\t "]]) {
+    const w = world([...reasonTitles, ...otherTitles]);
+    reasons.forEach((reason, i) => vote(w, reasonTitles[i] as string, -1, reason));
+    const seen: ChatRequest[] = [];
+    const run = await proposerFor(w, sponsoredReply, seen).run();
+    assert.equal(run.drafted, 0);
+    assert.equal(run.proposed, 0);
+    assert.equal(seen.length, 0);
+    w.store.close();
+  }
+  const w = world([...reasonTitles, ...otherTitles]);
+  reasonTitles.forEach((title, i) => vote(w, title, i === 0 ? 1 : -1, "sponsored"));
+  assert.equal((await proposerFor(w, sponsoredReply).run()).drafted, 0);
+  w.store.close();
+});
+
+test("rejected reason evidence cannot count toward another proposal", async () => {
+  const extra = ["Bitcoin sponsored interview", "Rust sponsored tutorial"];
+  const w = world([...reasonTitles, ...extra, ...otherTitles]);
+  for (const title of reasonTitles) vote(w, title, -1, "sponsored");
+  const proposer = proposerFor(w, sponsoredReply);
+  assert.equal((await proposer.run()).proposed, 1);
+  const [proposal] = w.store.listProposals("pending");
+  assert.ok(proposal);
+  assert.ok(w.store.decideProposal(proposal.id, "rejected", null));
+  assert.equal((await proposer.run()).drafted, 0);
+  for (const title of extra) vote(w, title, -1, "sponsored");
+  assert.equal((await proposer.run()).drafted, 0, "two new votes cannot reuse the rejected evidence");
+  assert.equal(w.store.listProposals("pending").length, 0);
+  w.store.close();
+});
+
+test("a reason shared with private items is embedded only at the private tier", async () => {
+  const w = world([...reasonTitles, ...otherTitles]);
+  reasonTitles.forEach((title, i) => vote(w, title, -1, i === 0 ? "paid promotion" : "sponsored"));
+  const source = w.store.addSource({ kind: "feed", url: "https://private.example/feed", tier: "private" });
+  w.store.upsertItems(source.id, [item("private-sponsored", "Private sponsored report")]);
+  const privateItem = w.store.listItems({ sourceId: source.id, view: "all" })[0];
+  assert.ok(privateItem);
+  assert.ok(w.store.setVote(privateItem.id, -1, "SPONSORED"));
+  const seen: ChatRequest[] = [];
+  const embedSeen: EmbedRequest[] = [];
+  assert.equal((await proposerFor(w, sponsoredReply, seen, embedSeen).run()).proposed, 1);
+  assert.equal(embedSeen.length, 2);
+  assert.deepEqual(embedSeen.find((r) => r.tier === "public")?.texts, ["clustering: paid promotion"]);
+  assert.deepEqual(embedSeen.find((r) => r.tier === "private")?.texts, ["clustering: sponsored"]);
+  assert.equal(seen[0]?.tier, "private");
+  assert.equal(w.store.listProposals("pending")[0]?.stats.reasonVotes, 4);
+  w.store.close();
+});
+
+test("reason groups skip missing or mismatched embedding tags", async () => {
+  for (const tag of [null, "other-embed"]) {
+    const w = world([...reasonTitles, ...otherTitles]);
+    for (const title of reasonTitles) vote(w, title, -1, "sponsored");
+    const seen: ChatRequest[] = [];
+    const provider = fakeProvider(sponsoredReply, seen);
+    const embedder = new Embedder({ provider });
+    if (tag === null) provider.embeddingModel = async () => null;
+    else {
+      const queries = embedder.queries.bind(embedder);
+      embedder.queries = async (...args) => ({ ...await queries(...args), tag });
+    }
+    const run = await new Proposer({ store: w.store, provider, embedder }).run();
+    assert.equal(run.drafted, 0);
+    assert.equal(seen.length, 0);
+    w.store.close();
+  }
+});
+
+test("item clusters keep priority over overlapping reason groups", async () => {
+  const w = world([...cryptoTitles, ...otherTitles]);
+  for (const title of cryptoTitles) vote(w, title, -1, "sponsored");
+  const run = await proposerFor(w, wordsReply).run();
+  assert.equal(run.drafted, 1);
+  assert.equal(run.proposed, 1);
+  assert.equal(w.store.listProposals("pending")[0]?.stats.reason, undefined);
+  w.store.close();
+});
+
+test("reason drafts share the run budget and pending limit with item clusters", async () => {
+  for (const options of [{ maxDraftsPerRun: 1 }, { maxPending: 1 }]) {
+    const titles = [...reasonTitles, "Cargo sponsored interview"];
+    const w = world([...cryptoTitles, ...titles, ...otherTitles]);
+    for (const title of cryptoTitles) vote(w, title, -1);
+    for (const title of titles) vote(w, title, -1, "sponsored");
+    const embedSeen: EmbedRequest[] = [];
+    const provider = fakeProvider(wordsReply, [], embedSeen);
+    const run = await new Proposer({ store: w.store, provider, embedder: new Embedder({ provider }), options }).run();
+    assert.equal(run.drafted, 1);
+    assert.equal(run.proposed, 1);
+    assert.equal(embedSeen.length, 0, "the first pass exhausted the budget before reason embedding");
+    w.store.close();
+  }
+});
+
+test("reason drafts that fail the backtest stop after two tries", async () => {
+  const w = world([...reasonTitles, ...otherTitles]);
+  for (const title of reasonTitles) vote(w, title, -1, "too long");
+  const seen: ChatRequest[] = [];
+  const embedSeen: EmbedRequest[] = [];
+  const proposer = proposerFor(w, () => JSON.stringify({ words: ["lengthy"], sentence: "", strength: "strong", rationale: "Hides lengthy items." }), seen, embedSeen);
+  assert.equal((await proposer.run()).rejected, 1);
+  assert.equal((await proposer.run()).rejected, 1);
+  assert.equal((await proposer.run()).drafted, 0);
+  assert.equal(seen.length, 2);
+  assert.equal(embedSeen.length, 3, "reason vectors are embedded fresh each run");
+  assert.equal(w.store.listProposals("pending").length, 0);
+  w.store.close();
+});
+
+test("unavailable reason embedding leaves the background pass queued for another run", async () => {
+  const w = world([...reasonTitles, ...otherTitles]);
+  for (const title of reasonTitles) vote(w, title, -1, "sponsored");
+  const provider = fakeProvider(sponsoredReply);
+  const embed = provider.embed.bind(provider);
+  const { NoEndpointError } = await import("../src/models/pool.ts");
+  provider.embed = async () => { throw new NoEndpointError("busy"); };
+  const proposer = new Proposer({ store: w.store, provider, embedder: new Embedder({ provider }) });
+  assert.equal((await proposer.runIfVotesChanged())?.queued, 1);
+  provider.embed = embed;
+  assert.equal((await proposer.runIfVotesChanged())?.proposed, 1);
+  w.store.close();
+});
+
+test("reason stats reach the proposals API with their evidence", async () => {
+  const w = world([...reasonTitles, ...otherTitles]);
+  for (const title of reasonTitles) vote(w, title, -1, "sponsored");
+  const server = createApp({ store: w.store, ingestor: new Ingestor(w.store), proposer: proposerFor(w, sponsoredReply), webRoot: ".", version: "test" });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    assert.equal((await fetch(`${base}/api/proposals/run`, { method: "POST" })).status, 200);
+    const result = await (await fetch(`${base}/api/proposals`)).json() as { proposals: { stats: { reason: string; reasonVotes: number }; evidenceCount: number; evidenceItems: { id: number }[] }[] };
+    assert.equal(result.proposals.length, 1);
+    const proposal = result.proposals[0];
+    assert.ok(proposal);
+    assert.deepEqual({ reason: proposal.stats.reason, reasonVotes: proposal.stats.reasonVotes }, { reason: "sponsored", reasonVotes: 3 });
+    assert.equal(proposal.evidenceCount, 3);
+    assert.deepEqual(proposal.evidenceItems.map((e) => e.id).sort(), reasonTitles.map((title) => w.ids.get(title)).sort());
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    w.store.close();
+  }
 });
 
 function worldWithPrivateLike(): World {

@@ -202,6 +202,11 @@ export interface NewRule {
   note?: string;
 }
 
+export interface ProposalStats extends Record<string, unknown> {
+  reason?: string;
+  reasonVotes?: number;
+}
+
 export interface NewProposal {
   signature: string;
   evidenceKey: string;
@@ -212,7 +217,7 @@ export interface NewProposal {
   rationale: string;
   /** Item ids of the votes the rule was drafted from. */
   evidence: number[];
-  stats: Record<string, unknown>;
+  stats: ProposalStats;
   /** "code" when a plain count found it, "model" when a model drafted it from votes and reasons. */
   origin: "code" | "model";
   model: string;
@@ -679,7 +684,7 @@ function toProposal(row: Row): Proposal {
     weight: Number(row["weight"]),
     rationale: String(row["rationale"]),
     evidence: JSON.parse(String(row["evidence"])) as number[],
-    stats: JSON.parse(String(row["stats"])) as Record<string, unknown>,
+    stats: JSON.parse(String(row["stats"])) as ProposalStats,
     origin: row["origin"] as "code" | "model",
     model: String(row["model"]),
     status: row["status"] as "pending" | "accepted" | "rejected",
