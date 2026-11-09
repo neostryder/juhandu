@@ -2,8 +2,8 @@
 
 ## How you tested it
 
-- [ ] `npm test` passes
-- [ ] `npm run typecheck` passes
+- [ ] `pnpm test` passes
+- [ ] `pnpm run typecheck` passes
 
 Other checks you ran, by hand or in a test:
 

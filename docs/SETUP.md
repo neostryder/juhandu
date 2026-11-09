@@ -1,6 +1,6 @@
 # Setting up Juhandu
 
-Every setting is optional. A fresh clone runs with `npm start` and no settings at all: it listens on http://127.0.0.1:8787, keeps its data in the project's `data` folder, and leaves the AI features off until you connect a model. Models and video reading can be set up on the Connect screen while Juhandu runs, and every setting can also come from an environment variable.
+Every setting is optional. A fresh clone runs with `pnpm start` and no settings at all: it listens on http://127.0.0.1:8787, keeps its data in the project's `data` folder, and leaves the AI features off until you connect a model. Models and video reading can be set up on the Connect screen while Juhandu runs, and every setting can also come from an environment variable.
 
 ## Connecting models
 
