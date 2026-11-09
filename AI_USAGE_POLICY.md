@@ -12,7 +12,7 @@ Secrets, credentials and private data are never given to an AI service as develo
 
 ## What has to pass
 
-Two commands gate every change, and both must pass. `npm test` runs every `*.test.ts` file under `test/` with Node's built-in test runner. `npm run typecheck` runs the TypeScript compiler in strict mode over the server code in `src/`, the browser code in `web/`, the scripts and the tests.
+Two commands gate every change, and both must pass. `pnpm test` runs every `*.test.ts` file under `test/` with Node's built-in test runner. `pnpm run typecheck` runs the TypeScript compiler in strict mode over the server code in `src/`, the browser code in `web/`, the scripts and the tests.
 
 The tests use the real feed parsers, real SQLite databases and the real egress gate. Model servers, feed servers and mail servers are replaced by fakes that answer the way the real ones do, so a test can check what Juhandu sent and what it did with the reply. No test calls a hosted model or anything else on the internet.
 
