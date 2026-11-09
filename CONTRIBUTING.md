@@ -4,12 +4,12 @@ Juhandu is one Node process, one SQLite file and a web app with no build step. C
 
 ## Setting up
 
-You need Node 26 or newer. Clone the repository and run `npm install`, which brings in the two development dependencies, TypeScript and the Node type definitions. Nothing else is installed, because Juhandu has no runtime npm dependencies.
+You need Node 26 or newer. Clone the repository and run `pnpm install`, which brings in the two development dependencies, TypeScript and the Node type definitions. Nothing else is installed, because Juhandu has no runtime npm dependencies.
 
 ```
-npm start           # runs node src/main.ts on http://127.0.0.1:8787
-npm test            # runs every test under test/ with node --test
-npm run typecheck   # runs tsc --noEmit over src, test, web and scripts
+pnpm start           # runs node src/main.ts on http://127.0.0.1:8787
+pnpm test            # runs every test under test/ with node --test
+pnpm run typecheck   # runs tsc --noEmit over src, test, web and scripts
 ```
 
 To run one file, use `node --test test/rules.test.ts`. Point `JUHANDU_DATA` at a scratch folder when you start a copy for testing, so it does not touch your own database.
@@ -38,7 +38,7 @@ A change to anything stored, whether a new table, a new column or a different sh
 
 ## Tests
 
-Every change ships with a test, and `npm test` and `npm run typecheck` must both pass before a pull request is ready. Tests run against real parsers and real SQLite databases, and they replace the network with fake servers or an injected `fetch`. A test never calls a hosted model or any other service on the internet.
+Every change ships with a test, and `pnpm test` and `pnpm run typecheck` must both pass before a pull request is ready. Tests run against real parsers and real SQLite databases, and they replace the network with fake servers or an injected `fetch`. A test never calls a hosted model or any other service on the internet.
 
 A regression test should fail without the change it protects. Check that by undoing the change, watching the test fail, and putting the change back.
 

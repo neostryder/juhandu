@@ -207,10 +207,10 @@ AI features need an embedding model and a chat model, on your own machine or beh
 ```
 git clone https://github.com/neostryder/juhandu.git
 cd juhandu
-npm start
+pnpm start
 ```
 
-Open http://127.0.0.1:8787 and add a feed from the Reading screen. Data goes in a `data` folder in the project unless `JUHANDU_DATA` names another one. `npm install` is needed only for the type checker.
+Open http://127.0.0.1:8787 and add a feed from the Reading screen. Data goes in a `data` folder in the project unless `JUHANDU_DATA` names another one. `pnpm install` is needed only for the type checker.
 
 Until its steps are done or it is hidden, a short Getting started list on the Briefing and Reading screens covers the first steps: add a feed, connect a chat model, set up video reading, and choose where the briefing goes. Each step links to the place that does it.
 

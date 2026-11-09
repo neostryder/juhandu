@@ -1,6 +1,6 @@
 # Dependencies
 
-Juhandu has no runtime npm dependencies. The server uses only Node's own modules, including `node:sqlite` for storage, `node:http` for the web server, `node:tls` for the mail client and the built-in `fetch` for everything else on the network, and the browser code uses only what the browser provides. Running Juhandu therefore installs no third-party code from npm, and there is no runtime package tree to audit, patch or keep up to date. `npm start` works on a fresh clone without `npm install`.
+Juhandu has no runtime npm dependencies. The server uses only Node's own modules, including `node:sqlite` for storage, `node:http` for the web server, `node:tls` for the mail client and the built-in `fetch` for everything else on the network, and the browser code uses only what the browser provides. Running Juhandu therefore installs no third-party code from npm, and there is no runtime package tree to audit, patch or keep up to date. `pnpm start` works on a fresh clone without `pnpm install`.
 
 ## Node
 
@@ -12,11 +12,11 @@ Docker is an optional way to run Juhandu. The `Dockerfile` builds from the `node
 
 ## Development dependencies
 
-These are installed by `npm install` and used only for type checking. Versions are the ones pinned in `package-lock.json`, and licenses are taken from each package's own `package.json`.
+These are installed by `pnpm install` and used only for type checking. Versions are the ones pinned in `pnpm-lock.yaml`, and licenses are taken from each package's own `package.json`.
 
 | Package | Version | License | Why |
 | --- | --- | --- | --- |
-| `typescript` | 7.0.2 | Apache-2.0 | Provides `tsc`, which `npm run typecheck` runs over the server code, the browser code and the tests. |
+| `typescript` | 7.0.2 | Apache-2.0 | Provides `tsc`, which `pnpm run typecheck` runs over the server code, the browser code and the tests. |
 | `@types/node` | 26.6.4 | MIT | Type definitions for Node's built-in modules. |
 | `undici-types` | 8.9.0 | MIT | Type definitions for `fetch` and related classes, required by `@types/node`. |
 | `@typescript/typescript-<platform>` | 7.0.2 | Apache-2.0 | The native compiler binary for the current platform. `typescript` lists one package per platform as optional, and npm installs only the one that matches. |
